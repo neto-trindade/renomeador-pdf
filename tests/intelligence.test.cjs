@@ -1,0 +1,279 @@
+"use strict";
+const test = require("node:test"),
+  assert = require("node:assert/strict"),
+  fs = require("node:fs/promises"),
+  path = require("node:path");
+const c = require("../core"),
+  reader = require("../pdf-reader"),
+  pdfjs = require("../vendor/pdf.min"),
+  JSZip = require("../vendor/jszip.min"),
+  { createArchive } = require("../archive");
+pdfjs.GlobalWorkerOptions.workerSrc = require.resolve(
+  "../vendor/pdf.worker.min",
+);
+const model = c.modelFor(["numero", "empresa"]);
+const make = (text) => ({
+  loaded: true,
+  invalid: false,
+  error: "",
+  manualName: "",
+  overrides: {},
+  detected: c.detect(text, "documento.pdf"),
+});
+function key(model = "57", n = "000346386") {
+  let s = "292609" + "00000000000000" + model + "001" + n + "1" + "00042533",
+    sum = 0,
+    w = 2;
+  for (let i = 42; i >= 0; i--) {
+    sum += +s[i] * w;
+    w = w === 9 ? 2 : w + 1;
+  }
+  const r = sum % 11;
+  return s + (r < 2 ? 0 : 11 - r);
+}
+test("CTe usa o número do transporte, mantendo a NF referenciada em outro campo", () => {
+  const d = c.detect(
+    "DACTE\nNúmero do CTe: 346386\nEmitente: TRANSPORTADORA ALFA LTDA\nNúmero da NF: 12345",
+  );
+  assert.equal(d.type, "CTe");
+  assert.equal(d.values.numero, "346386");
+  assert.equal(d.values.numero_nf, "12345");
+  assert.equal(d.values.empresa, "TRANSPORTADORA ALFA LTDA");
+});
+test("NF citada não substitui um número ausente no CTe", () => {
+  const d = c.detect(
+    "DACTE\nEmitente: TRANSPORTADORA ALFA\nNúmero da NF: 12345",
+  );
+  assert.equal(d.values.numero, "");
+  assert.equal(
+    c.evaluateEntry(make("DACTE\nNúmero da NF: 12345"), model).status,
+    "pending",
+  );
+});
+test("título DANFE prevalece sobre uma referência a CTe", () => {
+  const d = c.detect("DANFE\nNúmero da NF: 45678\nNúmero do CTe: 12345");
+  assert.equal(d.type, "NF");
+  assert.equal(d.values.numero, "45678");
+});
+test("emitente, destinatário e seus CNPJs ficam separados", () => {
+  const d = c.detect(
+    "DANFE\nEMITENTE\nNome / Razão Social\nALFA LTDA\nCNPJ: 00.000.000/0000-00\nDESTINATÁRIO\nNome / Razão Social\nBETA LTDA\nCNPJ: 11.111.111/1111-11\nNúmero da NF: 000123",
+  );
+  assert.equal(d.values.empresa, "ALFA LTDA");
+  assert.equal(d.values.cliente, "BETA LTDA");
+  assert.equal(d.values.cnpj, "00000000000000");
+  assert.equal(d.values.cnpj_cliente, "11111111111111");
+});
+test("PDF real em colunas identifica valores sob os rótulos", async () => {
+  const bytes = await fs.readFile(
+    path.join(__dirname, "../examples/05-cte-em-colunas.pdf"),
+  );
+  const d = c.detect(await reader.readPdfDocument(bytes, pdfjs));
+  assert.equal(d.values.numero, "346386");
+  assert.equal(d.values.empresa, "TRANSPORTADORA ALFA LTDA");
+  assert.equal(d.values.cliente, "CLIENTE DEMO LTDA");
+  assert.equal(d.values.data, "29-09-2026");
+  assert.equal(d.values.valor, "5.320,00");
+  assert.equal(d.values.estado, "BA");
+});
+test("posições relativas continuam funcionando quando o layout muda de lugar", () => {
+  const line = (y, cells) => {
+    let text = "";
+    return {
+      y,
+      height: 10,
+      segments: cells.map(([x, t]) => {
+        if (text) text += " ";
+        const start = text.length;
+        text += t;
+        return { x, text: t, start, end: text.length };
+      }),
+      get text() {
+        return text;
+      },
+    };
+  };
+  for (const dx of [0, 180]) {
+    const lines = [
+      line(100, [
+        [20 + dx, "Número da fatura"],
+        [210 + dx, "Data de Emissão"],
+      ]),
+      line(80, [
+        [20 + dx, "90001"],
+        [210 + dx, "02/10/2026"],
+      ]),
+      line(50, [[20 + dx, "Fornecedor: ALFA LTDA"]]),
+    ];
+    const d = c.detect({
+      text: lines.map((l) => l.text).join("\n"),
+      pages: [{ lines }],
+    });
+    assert.equal(d.values.numero, "90001");
+    assert.equal(d.values.data, "02-10-2026");
+  }
+});
+test("novos campos rotulados ficam disponíveis em um modelo sem mudança de código", () => {
+  const e = make(
+    "Número do documento: 12345\nRazão social: ALFA LTDA\nCentro de custo: FIN-02",
+  );
+  assert.equal(e.detected.labels.extra_centro_de_custo, "Centro de custo");
+  assert.equal(e.detected.values.extra_centro_de_custo, "FIN-02");
+  assert.equal(
+    c.evaluateEntry(e, c.modelFor(["extra_centro_de_custo", "numero"])).name,
+    "FIN-02 - 12345.pdf",
+  );
+});
+test("chave validada identifica CTe, sem inventar dia de emissão", () => {
+  const d = c.detect("Chave de acesso: " + key());
+  assert.equal(d.type, "CTe");
+  assert.equal(d.values.numero, "346386");
+  assert.equal(d.values.data, "");
+  assert.equal(c.parseAccessKey(key().slice(0, -1) + "9"), null);
+});
+test("contradição entre número impresso e chave permanece pendente", () => {
+  const d = c.detect("DACTE\nNúmero do CTe: 99999\nChave de acesso: " + key());
+  assert.equal(d.ambiguous.numero, true);
+  assert.equal(d.values.numero, "");
+});
+test("data impossível não é usada e campos sem rótulo não são adivinhados", () => {
+  const d = c.detect("Data de emissão: 31/02/2026\nALFA LTDA\n12345");
+  assert.equal(d.values.data, "");
+  assert.equal(d.values.empresa, "");
+  assert.equal(d.values.numero, "");
+});
+test("fatura, pedido e CE usam seu tipo e seu número", () => {
+  for (const [text, type, n] of [
+    ["Número da fatura: 90001", "Fatura", "90001"],
+    ["Número do pedido: 60001", "Pedido", "60001"],
+    ["Número da CE: 80001", "CE", "80001"],
+  ]) {
+    const d = c.detect(text);
+    assert.equal(d.type, type);
+    assert.equal(d.values.numero, n);
+  }
+});
+test("textos fixos podem aparecer em qualquer ponto de um modelo", () => {
+  const e = make("Número da NF: 12345\nRazão Social: ALFA LTDA");
+  const m = {
+    tokens: [
+      { type: "text", value: "NF " },
+      { type: "field", key: "numero" },
+      { type: "text", value: " - " },
+      { type: "field", key: "empresa" },
+      { type: "text", value: " - Cliente X" },
+    ],
+  };
+  assert.ok(c.validModel(m));
+  assert.equal(
+    c.evaluateEntry(e, m).name,
+    "NF 12345 - ALFA LTDA - Cliente X.pdf",
+  );
+});
+test("usar encontrados remove lacunas e separadores sem inventar empresa", () => {
+  const e = make("Número da NF: 12345\nData de emissão: 01/10/2026");
+  const m = c.modelFor(["numero", "empresa", "data"]);
+  assert.equal(c.evaluateEntry(e, m).status, "pending");
+  e.useAvailable = true;
+  assert.equal(c.evaluateEntry(e, m).name, "12345 - 01-10-2026.pdf");
+  assert.match(c.evaluateEntry(e, m).reason, /campos encontrados/);
+});
+test("ignorar um documento o exclui do ZIP e o registra no relatório", async () => {
+  const e = make("Número da NF: 12345");
+  e.ignored = true;
+  e.file = {
+    name: "ignorado.pdf",
+    arrayBuffer: async () => new Uint8Array([1]),
+  };
+  e.result = c.evaluateEntry(e, model);
+  const zip = await JSZip.loadAsync(await createArchive([e], JSZip));
+  assert.deepEqual(Object.keys(zip.files), ["relatorio.csv"]);
+  assert.match(await zip.file("relatorio.csv").async("string"), /IGNORADO/);
+});
+test("lote de 100 PDFs preserva todos os bytes e resolve todas as colisões", async () => {
+  const bytes = await fs.readFile(
+    path.join(__dirname, "../examples/01-nota-ficticia.pdf"),
+  );
+  const entries = Array.from({ length: 100 }, (_, i) => ({
+    ...make("Número da NF: 346386\nRazão Social: ALFA LTDA"),
+    file: { name: "scan" + i + ".pdf", arrayBuffer: async () => bytes },
+  }));
+  const results = c.uniqueResults(
+    entries.map((e) => c.evaluateEntry(e, model)),
+  );
+  entries.forEach((e, i) => (e.result = results[i]));
+  assert.equal(results[99].name, "346386 - ALFA LTDA (100).pdf");
+  const zip = await JSZip.loadAsync(await createArchive(entries, JSZip));
+  assert.equal(
+    Object.keys(zip.files).filter((n) => n.endsWith(".pdf")).length,
+    100,
+  );
+  for (const e of entries)
+    assert.deepEqual(
+      Buffer.from(await zip.file(e.result.name).async("uint8array")),
+      bytes,
+    );
+});
+test("modelos salvos rejeitam chaves arbitrárias e tokens malformados", () => {
+  assert.equal(
+    c.validModel({ tokens: [{ type: "field", key: "__proto__" }] }),
+    false,
+  );
+  assert.equal(
+    c.validModel({ tokens: [{ type: "text", value: "SEM DADOS" }] }),
+    false,
+  );
+  assert.equal(
+    c.validModel({ tokens: [{ type: "field", key: "extra_centro_de_custo" }] }),
+    true,
+  );
+});
+test("leitor aciona OCR nas páginas de imagem e continua lendo páginas nativas", async () => {
+  let ocrCalls = 0,
+    destroyed = false;
+  const fake = {
+    OPS: { paintImageXObject: 1 },
+    getDocument: () => ({
+      promise: Promise.resolve({
+        numPages: 2,
+        getPage: async (n) => ({
+          getTextContent: async () => ({
+            items:
+              n === 2
+                ? [
+                    {
+                      str: "Número da NF: 70001",
+                      transform: [1, 0, 0, 12, 0, 30],
+                      height: 12,
+                    },
+                  ]
+                : [],
+          }),
+          getViewport: () => ({ width: 200, height: 300 }),
+          render: () => ({ promise: Promise.resolve() }),
+          cleanup() {},
+        }),
+      }),
+      destroy: async () => {
+        destroyed = true;
+      },
+    }),
+  };
+  const d = await reader.readPdfDocument(
+    new TextEncoder().encode("%PDF-test"),
+    fake,
+    {
+      canvasFactory: () => ({ getContext: () => ({}) }),
+      recognizeImage: async () => {
+        ocrCalls++;
+        return { text: "Razão Social: EMPRESA DEMO LTDA", confidence: 90 };
+      },
+    },
+  );
+  assert.equal(ocrCalls, 2);
+  assert.equal(d.method, "ocr");
+  assert.equal(d.pages.length, 2);
+  assert.equal(c.detect(d).values.numero, "70001");
+  assert.equal(c.detect(d).values.empresa, "EMPRESA DEMO LTDA");
+  assert.equal(destroyed, true);
+});

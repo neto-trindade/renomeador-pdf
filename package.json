@@ -1,8 +1,12 @@
 {
   "name": "renomeador-pdf",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Renomeacao local de PDFs em lote com revisao manual e relatorio CSV",
-  "scripts": {"test": "node --test tests/*.test.cjs"},
-  "engines": {"node": ">=20"}
+  "description": "Analise automatica de PDFs com texto e OCR, modelos dinamicos de nome e exportacao em lote",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }

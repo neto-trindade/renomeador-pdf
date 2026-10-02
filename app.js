@@ -1,141 +1,678 @@
 "use strict";
-
-// PDFs are processed locally. Only naming preferences are saved in localStorage.
-const $ = id => document.getElementById(id);
-const {FIELD_NAMES, validModel, safeName, detect, evaluateEntry, uniqueResults, csvCell} = RenomeadorCore;
-const EXAMPLES = {numero:"59349",empresa:"EMPRESA XYZ",data:"25-09-2026",cnpj:"12345678000190",arquivo_original:"arquivo_recebido"};
+const $ = (id) => document.getElementById(id),
+  core = RenomeadorCore;
 const PRESETS = {
-  "num-company":["numero","empresa"],"company-num":["empresa","numero"],
-  number:["numero"],original:["arquivo_original"]
+  number: ["numero"],
+  "num-company": ["numero", "empresa"],
+  "company-num": ["empresa", "numero"],
+  "num-date": ["numero", "data"],
+  "company-num-date": ["empresa", "numero", "data"],
 };
-let model = {parts:["numero","empresa",""],separator:" - ",prefix:""};
-let entries = [];
-let saved = loadSaved();
-let reading = false, downloading = false, editing = -1;
+let model = core.modelFor(PRESETS["num-company"]),
+  entries = [],
+  saved = [],
+  reading = false,
+  packing = false,
+  editing = -1,
+  downloadUrl = null,
+  extraLabels = {};
 pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdf.worker.min.js";
-
-function loadSaved() {
-  try { const list=JSON.parse(localStorage.getItem("renomeador_modelos_v2")||"[]");return Array.isArray(list)?list.filter(x=>validModel(x.model)&&typeof x.name==="string").slice(0,30):[]; }
-  catch { return []; }
+function tell(text) {
+  $("message").textContent = text;
+  $("message").hidden = !text;
 }
-function savePreferences() { try {localStorage.setItem("renomeador_ultimo_modelo_v2",JSON.stringify(model));}catch{} }
-function partsUsed() {return [...new Set(model.parts.filter(Boolean))];}
-function compose(values) { return RenomeadorCore.compose(values, model); }
-function refreshExample() {
-  const name=compose(EXAMPLES);$("exampleName").textContent=(name||"Escolha pelo menos uma parte")+(name?".pdf":"");
-  const preset=Object.entries(PRESETS).find(([,parts])=>!model.prefix&&model.separator===" - "&&model.parts.filter(Boolean).join("|")===parts.join("|"))?.[0];
-  document.querySelectorAll("[data-preset]").forEach(b=>{b.classList.toggle("active",b.dataset.preset===preset);b.setAttribute("aria-pressed",String(b.dataset.preset===preset));});
+function stored(key, fallback) {
+  try {
+    return JSON.parse(localStorage.getItem(key)) ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
-function showModel() {
-  model.parts.forEach((p,i)=>$("part"+i).value=p);$("separator").value=model.separator;$("prefix").value=model.prefix;
-  refreshExample();savePreferences();recalculate();
+function persist(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
 }
-function readControls() {model={parts:[0,1,2].map(i=>$("part"+i).value),separator:$("separator").value,prefix:$("prefix").value};refreshExample();savePreferences();recalculate();}
-function fillSavedOptions() { const s=$("savedModels");s.replaceChildren(new Option("Meus modelos salvos",""));saved.forEach((x,i)=>s.add(new Option(x.name,String(i)))); }
+const loaded = stored(
+  "renomeador_modelos_v3",
+  stored("renomeador_modelos_v2", []),
+);
+saved = Array.isArray(loaded)
+  ? loaded
+      .filter(
+        (x) => x && core.validModel(x.model) && typeof x.name === "string",
+      )
+      .slice(-30)
+  : [];
+const previous = stored(
+  "renomeador_ultimo_modelo_v3",
+  stored("renomeador_ultimo_modelo_v2", null),
+);
+if (core.validModel(previous))
+  model = { version: 3, tokens: core.tokensOf(previous) };
+function labelFor(key) {
+  return (
+    entries.map((e) => e.detected.labels?.[key]).find(Boolean) ||
+    extraLabels[key] ||
+    core.FIELD_NAMES[key] ||
+    key.replace(/^extra_/, "").replace(/_/g, " ")
+  );
+}
+function available() {
+  const keys = new Set();
+  for (const e of entries) {
+    for (const [key, value] of Object.entries({
+      ...e.detected.values,
+      ...e.overrides,
+    }))
+      if (value || e.detected.ambiguous[key]) keys.add(key);
+    for (const key of Object.keys(e.detected.candidates || {})) keys.add(key);
+  }
+  keys.add("arquivo_original");
+  return [...keys];
+}
+function invalidateDownload() {
+  if (downloadUrl) {
+    URL.revokeObjectURL(downloadUrl);
+    downloadUrl = null;
+  }
+  $("download").hidden = true;
+  $("download").removeAttribute("href");
+  $("prepare").hidden = false;
+  $("downloadStatus").textContent = "";
+}
 function recalculate() {
-  const results = uniqueResults(entries.map(e => evaluateEntry(e, model)));
-  entries.forEach((entry, i) => { entry.result = results[i]; });
+  invalidateDownload();
+  const results = core.uniqueResults(
+    entries.map((e) => core.evaluateEntry(e, model)),
+  );
+  entries.forEach((e, i) => (e.result = results[i]));
   renderRows();
+  renderExample();
+}
+function renderExample() {
+  const current = JSON.stringify(model.tokens),
+    preset = Object.entries(PRESETS).find(
+      ([, keys]) => JSON.stringify(core.modelFor(keys).tokens) === current,
+    )?.[0];
+  document.querySelectorAll("[data-preset]").forEach((b) => {
+    const selected = b.dataset.preset === preset;
+    b.classList.toggle("active", selected);
+    b.setAttribute("aria-pressed", String(selected));
+  });
+  const first = entries.find((e) => e.loaded && !e.ignored && !e.invalid),
+    values = { ...first?.detected.values, ...first?.overrides };
+  for (const key of core.partsUsed(model))
+    if (!values[key]) values[key] = "[" + labelFor(key) + " não encontrado]";
+  $("exampleName").textContent =
+    (core.compose(values, model) || "Adicione um campo ao modelo") +
+    (core.partsUsed(model).length ? ".pdf" : "");
+}
+function renderFields() {
+  const selected = $("availableFields").value,
+    fields = available();
+  $("availableFields").replaceChildren(
+    ...fields.map((key) => new Option(labelFor(key), key)),
+  );
+  if (fields.includes(selected)) $("availableFields").value = selected;
+  $("fieldCount").textContent =
+    `${fields.filter((k) => k !== "arquivo_original").length} campos encontrados neste lote. Eles também podem ser usados nos seus modelos.`;
+}
+function renderTokens() {
+  const root = $("tokens");
+  root.replaceChildren();
+  model.tokens.forEach((token, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "token " + token.type;
+    if (token.type === "field") {
+      const text = document.createElement("span");
+      text.textContent = labelFor(token.key);
+      wrap.append(text);
+    } else {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.maxLength = 80;
+      input.value = token.value;
+      input.setAttribute("aria-label", "Texto fixo " + (i + 1));
+      input.oninput = () => {
+        token.value = input.value;
+        persist("renomeador_ultimo_modelo_v3", model);
+        recalculate();
+      };
+      wrap.append(input);
+    }
+    for (const [title, text, action, disabled] of [
+      [
+        "Mover parte " + (i + 1) + " para a esquerda",
+        "←",
+        () => {
+          [model.tokens[i - 1], model.tokens[i]] = [
+            model.tokens[i],
+            model.tokens[i - 1],
+          ];
+        },
+        i === 0,
+      ],
+      [
+        "Mover parte " + (i + 1) + " para a direita",
+        "→",
+        () => {
+          [model.tokens[i + 1], model.tokens[i]] = [
+            model.tokens[i],
+            model.tokens[i + 1],
+          ];
+        },
+        i === model.tokens.length - 1,
+      ],
+      ["Remover parte " + (i + 1), "×", () => model.tokens.splice(i, 1), false],
+    ]) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = text;
+      b.title = title;
+      b.setAttribute("aria-label", title);
+      b.disabled = disabled;
+      b.onclick = () => {
+        action();
+        modelChanged();
+      };
+      wrap.append(b);
+    }
+    root.append(wrap);
+  });
+}
+function modelChanged() {
+  persist("renomeador_ultimo_modelo_v3", model);
+  renderTokens();
+  recalculate();
+}
+function fillSaved() {
+  const selected = $("savedModels").value;
+  $("savedModels").replaceChildren(
+    new Option("Meus modelos salvos", ""),
+    ...saved.map((x, i) => new Option(x.name, String(i))),
+  );
+  if (saved[Number(selected)] && selected !== "")
+    $("savedModels").value = selected;
+  $("deleteModel").hidden = $("savedModels").value === "";
+}
+function btn(text, fn, className = "row-button") {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = text;
+  b.className = className;
+  b.disabled = reading || packing;
+  b.onclick = fn;
+  return b;
 }
 function renderRows() {
-  const root=$("rows");root.replaceChildren();
-  if(!entries.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=4;td.className="empty";td.textContent="Os nomes aparecerão aqui após adicionar PDFs.";tr.append(td);root.append(tr);}
-  entries.forEach((e,i)=>{
-    const r=e.result,tr=document.createElement("tr"),a=document.createElement("td"),b=document.createElement("td"),c=document.createElement("td"),d=document.createElement("td");
-    a.className="source";a.textContent=e.file.name;b.className="target";b.textContent=r.name||"—";
-    const pill=document.createElement("span");pill.className="pill "+(r.status==="ready"?"":r.status);pill.textContent={ready:"Pronto",pending:"Precisa corrigir",loading:"Lendo"}[r.status];c.append(pill);
-    if(r.reason){const note=document.createElement("span");note.className="reason";note.textContent=r.reason;c.append(note);}
-    const edit=document.createElement("button");edit.className="row-button";edit.type="button";edit.textContent="Corrigir";edit.disabled=reading||downloading||!e.loaded||e.invalid;edit.onclick=()=>openEditor(i);
-    const remove=document.createElement("button");remove.className="remove";remove.type="button";remove.textContent="×";remove.title="Remover";remove.setAttribute("aria-label","Remover "+e.file.name);remove.disabled=reading||downloading;remove.onclick=()=>{entries.splice(i,1);recalculate();};
-    d.append(edit,remove);tr.append(a,b,c,d);root.append(tr);
+  const ready = entries.filter((e) => e.result.status === "ready").length,
+    pending = entries.filter((e) => e.result.status === "pending").length,
+    ignored = entries.filter((e) => e.result.status === "ignored").length;
+  $("modelSection").hidden = !entries.length;
+  $("resultsSection").hidden = !entries.length;
+  $("uploadCount").textContent = entries.length
+    ? `${entries.length} PDFs adicionados`
+    : "Seus documentos não são enviados para um servidor.";
+  $("summary").textContent =
+    `${entries.length} documentos · ${ready} prontos${pending ? " · " + pending + " para revisar" : ""}${ignored ? " · " + ignored + " ignorados" : ""}`;
+  $("modelControls").disabled = reading || packing;
+  $("choose").disabled = reading || packing;
+  $("demo").disabled = reading || packing;
+  $("clear").disabled = reading || packing;
+  $("prepare").disabled = reading || packing || !ready;
+  $("prepare").textContent = packing
+    ? "Preparando download…"
+    : "Renomear arquivos";
+  $("pendingNote").hidden = !pending;
+  $("pendingNote").textContent =
+    `${pending} documento(s) ainda precisam de atenção e não entram no download. Você pode revisar, usar somente os campos encontrados, ignorar ou escolher outro modelo.`;
+  $("exportNote").textContent = ready
+    ? `${ready} PDF(s) pronto(s)${entries.length > 1 ? " + relatório CSV em um ZIP" : ""}. Os originais são preservados.`
+    : "Escolha um modelo que use os campos encontrados para liberar o download.";
+  const root = $("rows");
+  root.replaceChildren();
+  entries.forEach((e, i) => {
+    const r = e.result,
+      tr = document.createElement("tr"),
+      source = document.createElement("td"),
+      target = document.createElement("td"),
+      status = document.createElement("td"),
+      actions = document.createElement("td");
+    source.className = "source";
+    target.className = "target";
+    const original = document.createElement("strong");
+    original.textContent = e.file.name;
+    source.append(original);
+    if (e.loaded && !e.invalid) {
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      for (const text of [
+        e.detected.type || "Documento",
+        e.reading?.method === "ocr" ? "OCR" : "Texto",
+      ]) {
+        const s = document.createElement("span");
+        s.textContent = text;
+        meta.append(s);
+      }
+      source.append(meta);
+      const values = { ...e.detected.values, ...e.overrides },
+        keys = Object.keys(values).filter(
+          (k) => k !== "arquivo_original" && values[k],
+        );
+      if (keys.length) {
+        const details = document.createElement("details");
+        details.className = "data-found";
+        const summary = document.createElement("summary");
+        summary.textContent = `Dados encontrados (${keys.length})`;
+        details.append(summary);
+        const dl = document.createElement("dl");
+        for (const key of keys) {
+          const dt = document.createElement("dt"),
+            dd = document.createElement("dd");
+          dt.textContent = labelFor(key);
+          dd.textContent = values[key];
+          dd.title = e.detected.sources?.[key]?.join("\n") || "";
+          dl.append(dt, dd);
+        }
+        details.append(dl);
+        source.append(details);
+      }
+    }
+    target.textContent = r.name || "—";
+    const reason = document.createElement("span");
+    reason.className = "reason";
+    reason.textContent = r.reason || e.reading?.warnings?.[0] || "";
+    if (reason.textContent) target.append(reason);
+    const pill = document.createElement("span");
+    pill.className = "pill " + r.status;
+    pill.textContent = {
+      ready: "Pronto",
+      pending: "Revisar",
+      loading: "Analisando",
+      ignored: "Ignorado",
+    }[r.status];
+    status.append(pill);
+    const tools = document.createElement("div");
+    tools.className = "row-actions";
+    const review = btn(e.ignored ? "Reincluir" : "Revisar", () => {
+      if (e.ignored) {
+        e.ignored = false;
+        recalculate();
+      } else openEditor(i);
+    });
+    review.disabled = reading || packing || !e.loaded || e.invalid;
+    const remove = btn(
+      "×",
+      () => {
+        entries.splice(i, 1);
+        renderFields();
+        recalculate();
+      },
+      "remove",
+    );
+    remove.title = "Remover arquivo";
+    remove.setAttribute("aria-label", "Remover " + e.file.name);
+    tools.append(review, remove);
+    actions.append(tools);
+    if (r.status === "pending" && !e.invalid) {
+      const options = document.createElement("details");
+      options.className = "exception";
+      const summary = document.createElement("summary");
+      summary.textContent = "Outras opções";
+      options.append(
+        summary,
+        btn("Usar campos encontrados", () => {
+          e.useAvailable = true;
+          recalculate();
+        }),
+        btn("Ignorar arquivo", () => {
+          e.ignored = true;
+          recalculate();
+        }),
+        btn("Analisar novamente", () => analyze([e])),
+      );
+      actions.append(options);
+    }
+    tr.append(source, target, status, actions);
+    root.append(tr);
   });
-  const ready=entries.filter(e=>e.result.status==="ready").length,pending=entries.filter(e=>e.result.status==="pending").length;
-  $("summary").textContent=entries.length?`${entries.length} arquivo(s) · ${ready} pronto(s) · ${pending} para corrigir`:"Nenhum PDF adicionado ainda.";
-  $("clear").disabled=reading||downloading||!entries.length;
-  $("demo").disabled=reading||downloading;
-  $("choose").disabled=reading||downloading;
-  $("download").disabled=reading||downloading||!ready;
-  $("download").textContent=ready?`Baixar ${ready} PDF(s) pronto(s)`:"Baixar PDFs prontos";
+}
+function progress(percent, text) {
+  $("progressArea").hidden = false;
+  $("progressBar").style.width = Math.max(0, Math.min(100, percent)) + "%";
+  $("progress").setAttribute("aria-valuenow", String(Math.round(percent)));
+  $("progressText").textContent = text;
+}
+async function analyze(batch) {
+  if (reading || packing) return;
+  reading = true;
+  tell("");
+  recalculate();
+  for (let i = 0; i < batch.length; i++) {
+    const e = batch[i];
+    e.loaded = false;
+    e.error = "";
+    e.invalid = false;
+    e.reading = null;
+    progress(
+      (i / batch.length) * 100,
+      `Analisando documento ${i + 1} de ${batch.length}…`,
+    );
+    try {
+      e.reading = await RenomeadorPdf.readPdfDocument(
+        await e.file.arrayBuffer(),
+        pdfjsLib,
+        {
+          onProgress: (info) =>
+            progress(
+              ((i + (info.page - 1) / info.total) / batch.length) * 100,
+              `${info.stage === "ocr" ? "Lendo imagem automaticamente" : "Analisando documento"} ${i + 1} de ${batch.length} · página ${info.page}/${info.total}`,
+            ),
+          recognizeImage: (canvas) =>
+            RenomeadorOcr.recognizeImage(canvas, (m) => {
+              if (m.status === "recognizing text")
+                $("progressText").textContent =
+                  `Lendo imagem automaticamente · documento ${i + 1}/${batch.length} · ${Math.round(m.progress * 100)}%`;
+              else if (m.status === "loading language traineddata")
+                $("progressText").textContent =
+                  "Preparando a leitura de imagens para a primeira utilização…";
+            }),
+        },
+      );
+      e.detected = core.detect(e.reading, e.file.name);
+      if (!e.reading.text.trim() && e.reading.warnings.length)
+        e.error = e.reading.warnings[0];
+    } catch (err) {
+      const protectedFile = /PasswordException|password/i.test(
+        String(err?.name) + String(err?.message),
+      );
+      e.error = protectedFile
+        ? "PDF protegido por senha. Use um arquivo desbloqueado ou um nome para esta exceção."
+        : "PDF inválido ou incompatível";
+      e.invalid = !protectedFile;
+      e.detected = { values: {}, ambiguous: {}, labels: {}, candidates: {} };
+    }
+    e.loaded = true;
+    renderFields();
+    recalculate();
+  }
+  reading = false;
+  renderRows();
+  renderFields();
+  renderTokens();
+  progress(
+    100,
+    `Análise concluída · ${batch.length} documento(s) lido(s). Escolha o modelo abaixo.`,
+  );
 }
 async function addFiles(fileList) {
-  if(reading||downloading)return;
-  const incoming=Array.from(fileList),files=incoming.filter(f=>/\.pdf$/i.test(f.name));
-  if(incoming.length&&!files.length){alert("Selecione arquivos PDF.");return;}
-  if(!files.length)return;
-  reading=true;
-  const added=files.map(file=>({file,loaded:false,invalid:false,error:"",text:"",detected:{values:{},ambiguous:{}},overrides:{},manualName:"",result:null}));
-  entries.push(...added);recalculate();$("progress").hidden=false;
-  for(let i=0;i<added.length;i++) {
-    const e=added[i];$("progressText").textContent=`Lendo ${i+1} de ${added.length}: ${e.file.name}`;$("progressBar").style.width=(i/added.length*100)+"%";
-    try {
-      e.text=await RenomeadorPdf.readPdfText(await e.file.arrayBuffer(),pdfjsLib);
-      e.detected=detect(e.text,e.file.name);
-    }catch(err){
-      const protectedFile=/PasswordException|password/i.test(String(err?.name)+String(err?.message));
-      e.error=protectedFile?"PDF protegido por senha. Digite o nome manualmente.":"PDF inválido ou incompatível";
-      e.invalid=!protectedFile;
-    }
-    e.loaded=true;recalculate();
+  if (reading || packing) return;
+  const incoming = Array.from(fileList),
+    files = incoming.filter((f) => /\.pdf$/i.test(f.name));
+  if (!files.length) {
+    tell("Selecione arquivos no formato PDF.");
+    return;
   }
-  reading=false;recalculate();$("progressBar").style.width="100%";$("progressText").textContent="Leitura concluída.";
-  setTimeout(()=>{$("progress").hidden=true;},1300);
+  if (files.length < incoming.length)
+    tell("Arquivos de outros formatos foram ignorados.");
+  const added = files.map((file) => ({
+    file,
+    loaded: false,
+    invalid: false,
+    error: "",
+    reading: null,
+    detected: { values: {}, ambiguous: {}, labels: {}, candidates: {} },
+    overrides: {},
+    manualName: "",
+    ignored: false,
+    useAvailable: false,
+  }));
+  entries.push(...added);
+  await analyze(added);
 }
 function openEditor(i) {
-  editing=i;const e=entries[i];$("editTitle").textContent=e.file.name;
-  $("editHelp").textContent=e.error||"Confira os dados abaixo. Corrija somente o que estiver faltando ou errado.";
-  const root=$("editFields");root.replaceChildren();
-  for(const key of partsUsed().filter(k=>k!=="arquivo_original")){
-    const label=document.createElement("label");label.textContent=FIELD_NAMES[key];
-    const input=document.createElement("input");input.type="text";input.dataset.field=key;input.value=e.overrides[key]??e.detected.values[key]??"";input.placeholder="Digite "+FIELD_NAMES[key].toLowerCase();
-    label.append(input);root.append(label);
+  editing = i;
+  const e = entries[i];
+  $("editor").returnValue = "cancel";
+  $("editTitle").textContent = e.file.name;
+  $("editHelp").textContent =
+    e.error ||
+    e.reading?.warnings?.[0] ||
+    "Dados extraídos automaticamente. Ajuste somente se necessário.";
+  const root = $("editFields");
+  root.replaceChildren();
+  const values = { ...e.detected.values, ...e.overrides },
+    keys = [
+      ...new Set([
+        ...core.partsUsed(model),
+        ...Object.keys(values).filter((k) => values[k]),
+      ]),
+    ].filter((k) => k !== "arquivo_original");
+  for (const key of keys) {
+    const label = document.createElement("label");
+    label.textContent = labelFor(key);
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 180;
+    input.dataset.field = key;
+    input.value = values[key] || "";
+    input.placeholder = "Não identificado";
+    label.append(input);
+    if (e.detected.ambiguous[key]) {
+      const hint = document.createElement("small");
+      hint.textContent =
+        "Valores encontrados: " +
+        [
+          ...new Set((e.detected.candidates?.[key] || []).map((c) => c.value)),
+        ].join(" / ");
+      label.append(hint);
+    }
+    root.append(label);
   }
-  $("manualName").value=e.manualName;$("editor").showModal();
+  $("manualName").value = e.manualName;
+  $("useAvailable").checked = e.useAvailable;
+  $("editor").showModal();
 }
-async function download() {
-  if(reading||downloading)return;recalculate();
-  const ready=entries.filter(e=>e.result.status==="ready");if(!ready.length)return;
-  const batch=entries.map(e=>({...e,result:{...e.result}}));
-  downloading=true;renderRows();$("progress").hidden=false;$("progressText").textContent="Preparando o ZIP...";
-  try{
-    const bytes=await RenomeadorArchive.createArchive(batch,JSZip,p=>{$("progressBar").style.width=p.percent.toFixed(0)+"%";});
-    const url=URL.createObjectURL(new Blob([bytes],{type:"application/zip"})),a=document.createElement("a");
-    a.href=url;a.download="PDFs_renomeados_"+new Date().toISOString().slice(0,10)+".zip";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
-    $("progressText").textContent="ZIP pronto. Confira os downloads do navegador.";
-  }catch(err){alert("Não foi possível criar o ZIP: "+(err?.message||err));$("progressText").textContent="Falha ao criar o ZIP.";}
-  finally{downloading=false;renderRows();setTimeout(()=>{$("progress").hidden=true;},2400);}
+async function prepareDownload() {
+  if (reading || packing) return;
+  recalculate();
+  const ready = entries.filter((e) => e.result.status === "ready");
+  if (!ready.length) return;
+  const snapshot = entries.map((e) => ({
+    ...e,
+    overrides: { ...e.overrides },
+    detected: { ...e.detected, values: { ...e.detected.values } },
+    result: { ...e.result },
+  }));
+  packing = true;
+  renderRows();
+  progress(0, "Preparando seus arquivos…");
+  try {
+    const single = snapshot.length === 1 && ready.length === 1,
+      bytes = single
+        ? new Uint8Array(await ready[0].file.arrayBuffer())
+        : await RenomeadorArchive.createArchive(snapshot, JSZip, (p) =>
+            progress(
+              p.percent,
+              `Preparando download · ${Math.round(p.percent)}%`,
+            ),
+          );
+    downloadUrl = URL.createObjectURL(
+      new Blob([bytes], {
+        type: single ? "application/pdf" : "application/zip",
+      }),
+    );
+    $("download").href = downloadUrl;
+    $("download").download = single
+      ? ready[0].result.name
+      : "PDFs_Renomeados.zip";
+    $("download").textContent = single ? "Baixar PDF ↓" : "Baixar arquivos ↓";
+    $("download").hidden = false;
+    $("prepare").hidden = true;
+    $("downloadStatus").textContent =
+      "Download pronto. Clique no botão para salvar os arquivos.";
+    progress(100, "Arquivos prontos para baixar.");
+  } catch (err) {
+    tell("Não foi possível preparar o download. Tente um lote menor.");
+    progress(0, "O download não foi concluído.");
+  } finally {
+    packing = false;
+    renderRows();
+  }
 }
-for(let i=0;i<3;i++){
-  const select=$("part"+i);
-  for(const [value,label] of Object.entries({"":"Nenhuma parte",...FIELD_NAMES}))select.add(new Option(label,value));
-  select.addEventListener("change",readControls);
-}
-$("separator").addEventListener("change",readControls);$("prefix").addEventListener("input",readControls);
-document.querySelectorAll("[data-preset]").forEach(button=>button.onclick=()=>{model={parts:[...PRESETS[button.dataset.preset],"",""].slice(0,3),separator:" - ",prefix:""};showModel();});
-$("toggleCustom").onclick=()=>{const open=$("custom").hidden;$("custom").hidden=!open;$("toggleCustom").textContent=open?"Fechar personalização ↑":"Personalizar formato ↓";$("toggleCustom").setAttribute("aria-expanded",String(open));};
-$("saveModel").onclick=()=>{const name=$("modelName").value.trim();if(!name){alert("Digite um nome para guardar este modelo.");$("modelName").focus();return;}if(!partsUsed().length){alert("Escolha pelo menos uma parte.");return;}saved.push({name,model:JSON.parse(JSON.stringify(model))});saved=saved.slice(-30);try{localStorage.setItem("renomeador_modelos_v2",JSON.stringify(saved));}catch{alert("Não foi possível salvar no navegador.");}fillSavedOptions();$("modelName").value="";$("savedModels").value=String(saved.length-1);};
-$("savedModels").onchange=e=>{if(e.target.value==="")return;const savedModel=saved[Number(e.target.value)];if(savedModel){model=JSON.parse(JSON.stringify(savedModel.model));showModel();}};
-$("demo").onclick=()=>{
-  if(reading||downloading)return;
-  const files=RenomeadorSamples.map(sample=>{
-    const bytes=Uint8Array.from(atob(sample.base64),c=>c.charCodeAt(0));
-    return new File([bytes],sample.name,{type:"application/pdf"});
-  });
-  addFiles(files);
+$("choose").onclick = () => $("files").click();
+$("files").onchange = (e) => {
+  addFiles(e.target.files);
+  e.target.value = "";
 };
-$("choose").onclick=e=>{e.stopPropagation();$("files").click();};
-$("drop").onclick=e=>{if(e.target.id!=="choose")$("files").click();};
-$("drop").onkeydown=e=>{if(e.target!==$("drop"))return;if(e.key==="Enter"||e.key===" "){e.preventDefault();$("files").click();}};
-$("files").onchange=e=>{addFiles(e.target.files);e.target.value="";};
-for(const type of ["dragenter","dragover"])$("drop").addEventListener(type,e=>{e.preventDefault();$("drop").classList.add("drag");});
-for(const type of ["dragleave","drop"])$("drop").addEventListener(type,e=>{e.preventDefault();$("drop").classList.remove("drag");});
-$("drop").addEventListener("drop",e=>addFiles(e.dataTransfer.files));
-$("clear").onclick=()=>{entries=[];recalculate();$("progressText").textContent="";};
-$("download").onclick=download;
-$("editor").addEventListener("close",()=>{
-  if($("editor").returnValue!=="apply"||editing<0||!entries[editing])return;
-  const e=entries[editing];for(const input of $("editFields").querySelectorAll("[data-field]"))e.overrides[input.dataset.field]=input.value.trim();
-  e.manualName=$("manualName").value.trim();editing=-1;recalculate();
+for (const type of ["dragenter", "dragover"])
+  $("choose").addEventListener(type, (e) => {
+    e.preventDefault();
+    if (!reading && !packing) $("choose").classList.add("drag");
+  });
+for (const type of ["dragleave", "drop"])
+  $("choose").addEventListener(type, (e) => {
+    e.preventDefault();
+    $("choose").classList.remove("drag");
+  });
+$("choose").addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+// Stop accidental navigation if a file is dropped outside the upload area.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+$("demo").onclick = () => {
+  if (reading || packing) return;
+  addFiles(
+    RenomeadorSamples.map(
+      (s) =>
+        new File(
+          [Uint8Array.from(atob(s.base64), (c) => c.charCodeAt(0))],
+          s.name,
+          { type: "application/pdf" },
+        ),
+    ),
+  );
+};
+$("clear").onclick = () => {
+  entries = [];
+  invalidateDownload();
+  $("progressArea").hidden = true;
+  renderFields();
+  recalculate();
+  tell("");
+};
+$("prepare").onclick = prepareDownload;
+document.querySelectorAll("[data-preset]").forEach(
+  (b) =>
+    (b.onclick = () => {
+      model = core.modelFor(PRESETS[b.dataset.preset]);
+      $("savedModels").value = "";
+      $("deleteModel").hidden = true;
+      modelChanged();
+    }),
+);
+$("toggleCustom").onclick = () => {
+  const open = $("custom").hidden;
+  $("custom").hidden = !open;
+  $("toggleCustom").setAttribute("aria-expanded", String(open));
+  $("toggleCustom").textContent = open
+    ? "Fechar personalização −"
+    : "Personalizar nome +";
+  renderTokens();
+};
+$("addField").onclick = () => {
+  const key = $("availableFields").value;
+  if (!key) return;
+  if (model.tokens.length > 21) {
+    tell("Este modelo já tem muitas partes. Remova uma para continuar.");
+    return;
+  }
+  if (model.tokens.at(-1)?.type === "field")
+    model.tokens.push({ type: "text", value: " - " });
+  model.tokens.push({ type: "field", key });
+  modelChanged();
+};
+$("addText").onclick = () => {
+  const value = $("fixedText").value;
+  if (!value || model.tokens.length >= 24) return;
+  model.tokens.push({ type: "text", value });
+  modelChanged();
+};
+$("openSave").onclick = () => {
+  if (!core.validModel(model)) {
+    tell("Adicione pelo menos um campo antes de salvar.");
+    return;
+  }
+  $("saveDialog").returnValue = "cancel";
+  $("modelName").value = "";
+  $("saveDialog").showModal();
+};
+$("saveDialog").addEventListener("close", () => {
+  if ($("saveDialog").returnValue !== "save") return;
+  const name = $("modelName").value.trim();
+  if (!name) return;
+  const item = {
+    name,
+    model: JSON.parse(JSON.stringify(model)),
+    labels: Object.fromEntries(available().map((k) => [k, labelFor(k)])),
+  };
+  const index = saved.findIndex((x) => x.name === name);
+  if (index >= 0) saved[index] = item;
+  else saved.push(item);
+  saved = saved.slice(-30);
+  if (!persist("renomeador_modelos_v3", saved))
+    tell(
+      "O navegador não permitiu salvar o modelo. O lote continua disponível.",
+    );
+  else tell("Modelo salvo: " + name + ".");
+  fillSaved();
+  $("savedModels").value = String(saved.findIndex((x) => x.name === name));
+  $("deleteModel").hidden = false;
 });
-fillSavedOptions();
-try{const previous=JSON.parse(localStorage.getItem("renomeador_ultimo_modelo_v2")||"null");if(validModel(previous))model=previous;}catch{}
-showModel();
+$("savedModels").onchange = (e) => {
+  const item = saved[Number(e.target.value)];
+  $("deleteModel").hidden = e.target.value === "";
+  if (e.target.value !== "" && item) {
+    model = {
+      version: 3,
+      tokens: JSON.parse(JSON.stringify(core.tokensOf(item.model))),
+    };
+    extraLabels = item.labels || {};
+    modelChanged();
+  }
+};
+$("deleteModel").onclick = () => {
+  const index = Number($("savedModels").value);
+  if ($("savedModels").value === "") return;
+  saved.splice(index, 1);
+  persist("renomeador_modelos_v3", saved);
+  $("savedModels").value = "";
+  fillSaved();
+  tell("Modelo excluído.");
+};
+$("editor").addEventListener("close", () => {
+  if (editing < 0 || !entries[editing]) return;
+  const e = entries[editing],
+    action = $("editor").returnValue;
+  editing = -1;
+  if (action === "ignore") {
+    e.ignored = true;
+    recalculate();
+    return;
+  }
+  if (action !== "apply") return;
+  for (const input of $("editFields").querySelectorAll("[data-field]"))
+    e.overrides[input.dataset.field] = input.value.trim();
+  e.manualName = $("manualName").value.trim();
+  e.useAvailable = $("useAvailable").checked;
+  e.ignored = false;
+  renderFields();
+  recalculate();
+});
+fillSaved();
+renderFields();
+renderTokens();
+recalculate();

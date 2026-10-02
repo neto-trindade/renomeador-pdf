@@ -1,27 +1,324 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Padronize nomes de PDFs em lote, revise os dados e baixe um ZIP com relatório. Um projeto de automação de Neto Trindade.">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>Renomeador de PDFs | Neto Trindade</title><link rel="stylesheet" href="style.css"></head>
-<body>
-<header><div class="wrap brand"><b class="logo">R</b><div><strong>Renomeador de PDFs</strong><small>Simples, local e sem instalação</small></div><span class="private">● Os arquivos ficam no seu computador</span></div></header>
-<main class="wrap">
-<div class="intro"><small>AUTOMAÇÃO DOCUMENTAL</small><h1>Escolha o nome. Adicione os PDFs. Baixe pronto.</h1><p>Veja a prévia antes de baixar. Se algum dado não for encontrado, preencha na própria lista.</p>
-<div class="demo-bar"><button id="demo" class="button primary" type="button">Experimentar com exemplos</button><span>4 PDFs fictícios. Nenhum documento pessoal necessário.</span><a href="https://github.com/neto-trindade/renomeador-pdf" target="_blank" rel="noopener noreferrer">Ver projeto no GitHub ↗</a></div></div>
-<section class="card"><div class="heading"><span class="step">1</span><div><h2>Como deve ficar o nome?</h2><p>Escolha um formato. Você pode mudar depois.</p></div></div>
-<div class="presets" id="presets">
-<button type="button" data-preset="num-company">Número - Empresa<small>59349 - EMPRESA XYZ.pdf</small></button>
-<button type="button" data-preset="company-num">Empresa - Número<small>EMPRESA XYZ - 59349.pdf</small></button>
-<button type="button" data-preset="number">Somente número<small>59349.pdf</small></button>
-<button type="button" data-preset="original">Nome atual<small>O mesmo nome enviado</small></button>
-</div>
-<button id="toggleCustom" type="button" class="link-button" aria-expanded="false">Personalizar formato ↓</button>
-<div id="custom" class="custom" hidden><p>Escolha até três partes, na ordem em que devem aparecer:</p><div class="builder"><label>Primeira parte<select id="part0"></select></label><label>Segunda parte<select id="part1"></select></label><label>Terceira parte<select id="part2"></select></label><label>Separação<select id="separator"><option value=" - ">Hífen ( - )</option><option value="_">Sublinhado ( _ )</option><option value=" ">Espaço</option></select></label></div>
-<label class="prefix">Texto antes do nome (opcional)<input id="prefix" type="text" maxlength="40" placeholder="Ex.: NF"></label>
-<div class="saved"><input aria-label="Nome do modelo para guardar" id="modelName" type="text" maxlength="50" placeholder="Nome do modelo para guardar"><button id="saveModel" class="button outline" type="button">Salvar modelo</button><select id="savedModels" aria-label="Modelos salvos"><option value="">Meus modelos salvos</option></select></div></div>
-<div class="example">Exemplo: <strong id="exampleName"></strong></div></section>
-<section class="card"><div class="heading"><span class="step">2</span><div><h2>Adicione os PDFs</h2><p>Selecione ou arraste vários arquivos de uma vez.</p></div></div><div class="drop" id="drop" tabindex="0" role="button" aria-label="Selecionar arquivos PDF"><b class="arrow">↓</b><strong>Arraste os PDFs aqui</strong><span>ou</span><button id="choose" class="button primary" type="button">Escolher arquivos</button><input id="files" type="file" accept=".pdf,application/pdf" multiple hidden></div><div id="progress" class="progress" hidden><div id="progressBar"></div></div><p id="progressText" class="progress-text" aria-live="polite"></p></section>
-<section class="card"><div class="heading results-head"><span class="step">3</span><div><h2>Confira e baixe</h2><p id="summary">Nenhum PDF adicionado ainda.</p></div><div class="toolbar"><button id="clear" class="button outline" type="button" disabled>Limpar</button><button id="download" class="button primary" type="button" disabled>Baixar PDFs prontos</button></div></div><div class="table-wrap"><table><thead><tr><th>Arquivo enviado</th><th>Vai ficar assim</th><th>Conferência</th><th>Ações</th></tr></thead><tbody id="rows"><tr><td class="empty" colspan="4">Os nomes aparecerão aqui após adicionar PDFs.</td></tr></tbody></table></div><p class="note">O download é um ZIP com os PDFs prontos e um relatório de pendências. Os originais não são alterados.</p></section>
-<footer><span>Projeto de Neto Trindade · Automação de rotinas administrativas</span><br>Com os arquivos baixados, funciona sem internet. PDFs digitalizados como imagem precisam de preenchimento manual.</footer></main>
-<dialog id="editor"><form method="dialog"><div class="modal-head"><div><small>REVISAR ARQUIVO</small><h2 id="editTitle"></h2></div><button class="close" value="cancel" aria-label="Fechar">×</button></div><p id="editHelp"></p><div id="editFields" class="edit-fields"></div><label class="manual">Ou escreva o nome final completo<input id="manualName" type="text" maxlength="180" placeholder="Sem .pdf"></label><p class="note">Um nome completo substitui os campos acima só para este arquivo.</p><div class="modal-actions"><button class="button outline" value="cancel">Cancelar</button><button class="button primary" value="apply">Salvar correção</button></div></form></dialog>
-<script src="vendor/pdf.min.js"></script><script src="vendor/jszip.min.js"></script><script src="core.js"></script><script src="pdf-reader.js"></script><script src="archive.js"></script><script src="samples.js"></script><script src="app.js"></script>
-</body></html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="Envie PDFs, identifique os dados automaticamente e baixe os arquivos organizados. Uma plataforma de automação documental de Neto Trindade."
+    />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self' https://cdn.jsdelivr.net; object-src 'none'; base-uri 'none'; form-action 'self'"
+    />
+    <title>Renomeador de PDFs | Neto Trindade</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="wrap header">
+        <a class="brand" href="./" aria-label="Renomeador de PDFs, início"
+          ><span class="logo">R<span>↗</span></span
+          ><strong>Renomeador de PDFs</strong></a
+        ><a
+          class="project-link"
+          href="https://github.com/neto-trindade/renomeador-pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Ver projeto no GitHub ↗</a
+        >
+      </div>
+    </header>
+    <main class="wrap">
+      <div class="intro">
+        <span class="eyebrow"
+          >MENOS TAREFAS REPETITIVAS. MAIS ORGANIZAÇÃO.</span
+        >
+        <h1>Seus PDFs já sabem<br />como se chamar.</h1>
+        <p>
+          A plataforma lê os documentos e encontra os dados.<br />Você escolhe o
+          padrão e baixa tudo organizado.
+        </p>
+        <div class="flow">
+          <span>1. Envie</span><b>→</b><span>2. Escolha o nome</span><b>→</b
+          ><span>3. Baixe pronto</span>
+        </div>
+      </div>
+      <section class="card upload-card">
+        <div class="heading">
+          <span class="step">1</span>
+          <div>
+            <h2>Adicione seus PDFs</h2>
+            <p>
+              Um arquivo ou um lote inteiro. A análise começa automaticamente.
+            </p>
+          </div>
+          <span class="privacy">● Leitura no seu navegador</span>
+        </div>
+        <button class="drop" id="choose" type="button">
+          <svg
+            width="40"
+            height="44"
+            viewBox="0 0 40 44"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M8 2h17l9 10v29H8z"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M24 3v10h9M21 32V20m-5 5 5-5 5 5"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            /></svg
+          ><strong>Arraste seus PDFs aqui ou clique para selecionar</strong
+          ><span
+            >Vários arquivos de uma vez · PDFs com texto ou digitalizados</span
+          ><span class="button primary">Selecionar PDFs</span></button
+        ><input
+          id="files"
+          type="file"
+          accept=".pdf,application/pdf"
+          multiple
+          hidden
+        />
+        <div class="upload-footer">
+          <span id="uploadCount"
+            >Seus documentos não são enviados para um servidor.</span
+          ><button id="demo" class="link-button" type="button">
+            Experimentar com 6 exemplos fictícios ↗
+          </button>
+        </div>
+        <div id="progressArea" class="progress-area" hidden>
+          <div
+            class="progress"
+            role="progressbar"
+            aria-label="Progresso da análise"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            id="progress"
+          >
+            <div id="progressBar"></div>
+          </div>
+          <p id="progressText" aria-live="polite"></p>
+        </div>
+      </section>
+      <section id="modelSection" class="card" hidden>
+        <div class="heading">
+          <span class="step">2</span>
+          <div>
+            <h2>Como quer organizar os nomes?</h2>
+            <p>
+              Os dados são encontrados por nós. O padrão é escolhido por você.
+            </p>
+          </div>
+        </div>
+        <fieldset id="modelControls">
+          <legend class="sr-only">Modelo de nome</legend>
+          <div class="presets">
+            <button type="button" data-preset="number">
+              <span>Somente número</span><small>346386.pdf</small>
+            </button>
+            <button type="button" data-preset="num-company">
+              <span>Número + Empresa</span><small>346386 - Empresa.pdf</small>
+            </button>
+            <button type="button" data-preset="company-num">
+              <span>Empresa + Número</span><small>Empresa - 346386.pdf</small>
+            </button>
+            <button type="button" data-preset="num-date">
+              <span>Número + Data</span><small>346386 - 29-09-2026.pdf</small>
+            </button>
+            <button type="button" data-preset="company-num-date">
+              <span>Empresa + Número + Data</span
+              ><small>Empresa - 346386 - 29-09-2026.pdf</small>
+            </button>
+          </div>
+          <div class="model-actions">
+            <button
+              id="toggleCustom"
+              class="link-button"
+              type="button"
+              aria-expanded="false"
+              aria-controls="custom"
+            >
+              Personalizar nome +
+            </button>
+            <div class="saved-controls">
+              <label class="sr-only" for="savedModels"
+                >Meus modelos salvos</label
+              ><select id="savedModels">
+                <option value="">Meus modelos salvos</option></select
+              ><button
+                id="deleteModel"
+                type="button"
+                class="link-button"
+                hidden
+              >
+                Excluir modelo
+              </button>
+            </div>
+            <button id="openSave" class="button outline compact" type="button">
+              Salvar este modelo
+            </button>
+          </div>
+          <div id="custom" class="custom" hidden>
+            <p>
+              Monte o nome com os campos encontrados e com seus próprios textos.
+              Use as setas para mudar a ordem.
+            </p>
+            <div id="tokens" class="tokens" aria-label="Partes do nome"></div>
+            <div class="add-controls">
+              <label
+                >Campo encontrado<select id="availableFields"></select></label
+              ><button id="addField" class="button outline" type="button">
+                Adicionar campo</button
+              ><label
+                >Texto fixo<input
+                  id="fixedText"
+                  type="text"
+                  maxlength="80"
+                  placeholder="Ex.: NF ou -"
+                  value=" - " /></label
+              ><button id="addText" class="button outline" type="button">
+                Adicionar texto
+              </button>
+            </div>
+            <p class="small" id="fieldCount"></p>
+          </div>
+          <div class="example">
+            <span>Prévia do modelo</span><strong id="exampleName"></strong>
+          </div>
+        </fieldset>
+      </section>
+      <section id="resultsSection" class="card results" hidden>
+        <div class="heading results-heading">
+          <span class="step">3</span>
+          <div>
+            <h2>Confira o resultado</h2>
+            <p id="summary" aria-live="polite"></p>
+          </div>
+          <button id="clear" class="link-button" type="button">
+            Limpar lote
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Arquivo original / dados encontrados</th>
+                <th>Novo nome</th>
+                <th>Situação</th>
+                <th>Revisão opcional</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <div id="pendingNote" class="notice" hidden></div>
+        <div class="export-bar">
+          <div>
+            <strong id="exportTitle">Tudo organizado, em um download.</strong>
+            <p id="exportNote">Os arquivos originais são preservados.</p>
+          </div>
+          <button id="prepare" class="button primary" type="button" disabled>
+            Renomear arquivos</button
+          ><a
+            id="download"
+            class="button primary"
+            hidden
+            download="PDFs_Renomeados.zip"
+            >Baixar arquivos ↓</a
+          >
+        </div>
+        <p id="downloadStatus" class="small" aria-live="polite"></p>
+      </section>
+      <p id="message" class="message" role="status" hidden></p>
+      <footer>
+        <span
+          >Feito por
+          <a
+            href="https://github.com/neto-trindade"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Neto Trindade</a
+          >
+          · Automação documental</span
+        >
+        <p>
+          O OCR pode precisar de internet para carregar os recursos de leitura.
+          Os PDFs continuam no seu navegador.<br />A identificação é automática;
+          documentos pouco legíveis ou com dados conflitantes podem precisar de
+          revisão.
+        </p>
+      </footer>
+    </main>
+    <dialog id="editor">
+      <form method="dialog">
+        <div class="modal-head">
+          <div>
+            <span class="eyebrow">DADOS IDENTIFICADOS</span>
+            <h2 id="editTitle"></h2>
+          </div>
+          <button class="close" value="cancel" aria-label="Fechar revisão">
+            ×
+          </button>
+        </div>
+        <p id="editHelp"></p>
+        <div id="editFields" class="edit-fields"></div>
+        <label class="check"
+          ><input id="useAvailable" type="checkbox" /> Usar somente os campos
+          encontrados quando algo estiver ausente</label
+        >
+        <details class="manual">
+          <summary>Nome completo para uma exceção</summary>
+          <label
+            >Nome final<input
+              id="manualName"
+              type="text"
+              maxlength="180"
+              placeholder="Sem .pdf"
+          /></label>
+        </details>
+        <div class="modal-actions">
+          <button class="button outline" value="ignore">Ignorar arquivo</button
+          ><button class="button outline" value="cancel">Cancelar</button
+          ><button class="button primary" value="apply">Salvar correção</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="saveDialog">
+      <form method="dialog">
+        <h2>Salvar modelo</h2>
+        <p>Na próxima vez, selecione este padrão depois de enviar os PDFs.</p>
+        <label
+          >Nome do modelo<input
+            id="modelName"
+            type="text"
+            maxlength="50"
+            placeholder="Ex.: CTe Transportadoras"
+            required
+        /></label>
+        <p class="small">Os modelos ficam salvos neste navegador.</p>
+        <div class="modal-actions">
+          <button class="button outline" value="cancel" formnovalidate>
+            Cancelar</button
+          ><button class="button primary" value="save">Salvar modelo</button>
+        </div>
+      </form>
+    </dialog>
+    <script src="vendor/pdf.min.js"></script>
+    <script src="vendor/jszip.min.js"></script>
+    <script src="vendor/tesseract.min.js"></script>
+    <script src="core.js"></script>
+    <script src="pdf-reader.js"></script>
+    <script src="ocr.js"></script>
+    <script src="archive.js"></script>
+    <script src="samples.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

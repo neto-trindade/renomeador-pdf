@@ -59,16 +59,38 @@ fontpath='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 font=ImageFont.truetype(fontpath, 32) if Path(fontpath).exists() else ImageFont.load_default(size=32)
 d.rectangle((0,0,1190,180), fill='#137b55')
 d.text((80,65), 'EXEMPLO FICTICIO - PDF SEM TEXTO', font=font, fill='white')
-for i, line in enumerate(['Numero da NF: 00070001', 'Razao Social: EMPRESA DEMO LTDA', 'Data de Emissao: 01/10/2026', 'Somente imagem: preencha os campos manualmente.', 'SEM VALOR FISCAL']):
+for i, line in enumerate(['Numero da NF: 00070001', 'Razao Social: EMPRESA DEMO LTDA', 'Data de Emissao: 01/10/2026', 'Documento digitalizado para leitura automatica.', 'SEM VALOR FISCAL']):
     d.text((80,280+i*100),line,font=font,fill='#263b2c')
 c=canvas.Canvas(str(examples/'04-apenas-imagem.pdf'),pagesize=A4,invariant=True)
 c.setTitle('Exemplo ficticio sem camada de texto')
 c.drawImage(ImageReader(image),0,0,width=WIDTH,height=HEIGHT)
 c.save()
+image.save(ROOT/'.test-scan.png')
+
+def table_pdf(path, heading, rows):
+    c=canvas.Canvas(str(path),pagesize=A4,invariant=True)
+    c.setTitle(heading+' - EXEMPLO FICTICIO')
+    page(c,heading,[])
+    y=HEIGHT-135
+    for row in rows:
+        for x,label,value in row:
+            c.setFillColor(HexColor('#64746c')); c.setFont('Helvetica-Bold',9); c.drawString(x,y,label)
+            c.setFillColor(HexColor('#20332b')); c.setFont('Helvetica',11); c.drawString(x,y-20,value)
+        y-=70
+    c.save()
+
+table_pdf(examples/'05-cte-em-colunas.pdf','DACTE - Conhecimento de Transporte',[
+    [(44,'Numero do CTe','000346386'),(315,'Data de Emissao','29/09/2026')],
+    [(44,'Emitente','TRANSPORTADORA ALFA LTDA'),(315,'Destinatario','CLIENTE DEMO LTDA')],
+    [(44,'CNPJ do Emitente','00.000.000/0000-00'),(315,'Valor total','R$ 5.320,00')],
+    [(44,'Numero da NF','00012345'),(315,'Municipio','Salvador')],
+    [(44,'UF','BA'),(315,'Codigo interno','LOG-2026')],
+])
+text_pdf(examples/'06-fatura-ficticia.pdf',[('Numero da Fatura: 00090001','FATURA FICTICIA - SEM VALOR FISCAL'),('Fornecedor: SERVICOS BETA LTDA','Cliente: CLIENTE DEMO LTDA'),('Data de Emissao: 01/10/2026','Data de Vencimento: 15/10/2026'),('Valor total: R$ 1.250,00','Centro de custo: FIN-02'),('Cidade: Salvador','UF: BA')])
 text_pdf(fixtures/'sem-empresa.pdf', [('Numero da NF: 00081001','Empresa ausente de proposito')])
 text_pdf(fixtures/'varias-paginas.pdf', normal, pages=2)
 text_pdf(fixtures/'protegido.pdf', normal, password='senha-de-teste')
 (fixtures/'invalido.pdf').write_text('Este arquivo nao e um PDF. Fixture ficticia para validacao.\n')
 embedded=[{'name':f.name,'base64':base64.b64encode(f.read_bytes()).decode()} for f in sorted(examples.glob('*.pdf'))]
 (ROOT/'samples.js').write_text('// Fictional sample PDFs embedded for an offline one-click demo.\nconst RenomeadorSamples = '+json.dumps(embedded,ensure_ascii=False,separators=(',',':'))+';\n')
-print('7 PDFs ficticios, 1 arquivo invalido de teste e demonstracao offline gerados.')
+print('9 PDFs ficticios, 1 arquivo invalido e 6 exemplos incorporados gerados.')

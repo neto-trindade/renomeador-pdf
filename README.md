@@ -1,86 +1,96 @@
-# Renomeador de PDFs
+# Renomeador inteligente de PDFs
 
-**Padronização de documentos em lote, com prévia, revisão manual e processamento no navegador.**
+**Envie PDFs → leitura automática → escolha o padrão → baixe documentos organizados.**
 
-Projeto de **[Neto Trindade](https://github.com/neto-trindade)** voltado à automação de rotinas administrativas. Organiza PDFs recebidos com nomes pouco descritivos e permite conferir o resultado antes de baixar.
+Uma plataforma de automação documental de **[Neto Trindade](https://github.com/neto-trindade)**. O usuário escolhe **como** organizar o nome. A aplicação identifica **quais dados** existem no documento, sem exigir que cada PDF seja aberto ou preenchido manualmente.
 
-**[Abrir a demonstração](https://neto-trindade.github.io/renomeador-pdf/)** · [PDFs fictícios de exemplo](examples) · [Como foi validado](docs/VALIDACAO.md)
+**[Abrir a plataforma](https://neto-trindade.github.io/renomeador-pdf/)** · [Exemplos fictícios](examples) · [Validação](docs/VALIDACAO.md)
 
-![Interface com os quatro PDFs fictícios: dois prontos e dois para revisão](docs/interface.jpg)
+![Interface da plataforma e prévia dos documentos renomeados](docs/interface.jpg)
 
-## O problema
+## Experimente
 
-Arquivos como `documento_01.pdf` e `anexo.pdf` dificultam a localização de notas e outros documentos. Renomear cada arquivo manualmente exige abrir o PDF, procurar os dados e repetir o processo.
+1. Arraste seus PDFs ou clique em **Selecionar PDFs**. Para testar sem documentos pessoais, use **Experimentar com 6 exemplos fictícios**.
+2. A leitura de todas as páginas começa automaticamente. Em páginas digitalizadas, o OCR é acionado sem configuração.
+3. Escolha um dos cinco modelos de nome ou clique em **Personalizar nome**.
+4. Confira a prévia. Revisar dados é opcional, exceto quando um campo necessário estiver ausente ou ambíguo.
+5. Clique em **Renomear arquivos** e depois em **Baixar arquivos**. Lotes geram `PDFs_Renomeados.zip`, com PDFs e relatório CSV. Um único arquivo pronto pode ser baixado diretamente como PDF.
 
-A ferramenta lê o texto disponível, sugere um nome como **`59349 - EMPRESA DEMO LTDA.pdf`** e sinaliza dados ausentes ou ambíguos para revisão. Nenhum PDF original é alterado: o download contém cópias com os novos nomes.
+Exemplo: o documento fictício em colunas tem CTe `346386`, emitente `TRANSPORTADORA ALFA LTDA` e uma NF referenciada `12345`. O modelo **Número + Empresa** gera `346386 - TRANSPORTADORA ALFA LTDA.pdf`, usando o número do transporte.
 
-## Experimente em um minuto
+## O que funciona nesta versão
 
-1. Abra a [demonstração](https://neto-trindade.github.io/renomeador-pdf/) e clique em **Experimentar com exemplos**.
-2. Confira os quatro documentos fictícios: dois ficam prontos, um tem números ambíguos e um contém somente imagem.
-3. Use **Corrigir** para preencher os dados pendentes ou informar um nome completo.
-4. Baixe um ZIP com os PDFs prontos e o relatório `relatorio.csv`.
+- Upload múltiplo, arrastar e soltar, processamento sequencial em lote.
+- Extração do texto nativo e OCR local em português com Tesseract.js.
+- Reconstrução de linhas e colunas a partir de posições **relativas**, sem coordenadas fixas por empresa.
+- Identificação por títulos, rótulos, contexto de emitente/destinatário e chaves de acesso com dígito verificador.
+- Números de NF, CTe, CE, fatura, pedido e documento; empresa, emitente, fornecedor, cliente, CNPJ/CPF, emissão, vencimento, valor, cidade/UF, descrição e código interno, quando encontrados.
+- Novos campos no formato `Rótulo: valor` aparecem automaticamente na personalização, como **Centro de custo**.
+- Cinco modelos prontos: número; número + empresa; empresa + número; número + data; empresa + número + data.
+- Composição por partes, com campos e textos fixos em qualquer ordem: `NF [Número] - [Empresa]`, por exemplo.
+- Modelos nomeados salvos neste navegador, reaproveitamento e exclusão.
+- Dados encontrados por arquivo, prévia de nomes e correção de exceções.
+- Campos ausentes não são inventados. É possível usar somente os encontrados, revisar, ignorar o documento ou mudar o padrão.
+- Nomes repetidos recebem ` (2)`, ` (3)` etc., sem sobrescrever PDFs.
+- Exportação preserva os bytes dos documentos; o OCR não altera o PDF original.
+- O relatório registra nomes, campos extraídos, tipo, método de leitura e arquivos pendentes/ignorados.
 
-O botão de exemplos funciona também na cópia local, sem baixar PDFs de um servidor.
+## Identificação automática, com limites claros
 
-## Recursos implementados
+Esta versão usa **extração por regras e OCR**, sem uma API generativa de IA. Ela encontra rótulos comuns e relações entre linhas/colunas, mas não compreende qualquer documento arbitrário. Campos sem rótulo, documentos pouco legíveis, empresas em seções não reconhecidas e layouts incomuns podem exigir revisão. Conflitos entre valores ficam pendentes; a aplicação não escolhe um valor arbitrariamente.
 
-- Leitura do texto de todas as páginas com PDF.js.
-- Identificação por regras de número da nota, razão social, data de emissão e CNPJ.
-- Formatos prontos e composição personalizada com até três campos, separador e prefixo.
-- Prévia dos nomes e correção manual dos campos ou do nome completo.
-- Modelos de nome salvos no próprio navegador.
-- Sufixos para nomes repetidos, como ` (2)`, considerando diferenças de maiúsculas e minúsculas.
-- Exportação de PDFs em ZIP e relatório CSV com arquivos prontos e pendentes.
-- Rejeição de arquivos inválidos e tratamento de PDFs protegidos por senha.
+A detecção do tipo é uma sugestão contextual. CNPJ/CPF são extraídos pelo formato, sem validação cadastral ou fiscal. Datas inválidas são descartadas. Uma chave de acesso só é interpretada após validação estrutural e do dígito verificador; ela não fornece o dia de emissão. Números alfanuméricos de documento ainda podem não ser reconhecidos.
 
-## Executar no computador
+PDFs protegidos por senha não são lidos automaticamente. É possível usar uma cópia desbloqueada, ignorá-los ou informar um nome para essa exceção, preservando a proteção do original. Arquivos inválidos ficam fora do download. Documentos pendentes também não entram no ZIP e ficam registrados no relatório.
 
-Em **Code → Download ZIP**, baixe e extraia o repositório. Abra `index.html` no Chrome ou Edge. A aplicação não precisa de conta, servidor, instalação ou chave de API.
+O lote fica em memória. O limite prático depende do tamanho dos PDFs, do número de páginas e do dispositivo; OCR de muitas páginas demanda tempo e memória. Foi testada a integridade de um lote de 100 PDFs pequenos, sem benchmark de grandes documentos digitalizados.
 
-As bibliotecas estão incluídas em `vendor/`. Na cópia local, a ferramenta e os exemplos funcionam sem internet. Na versão hospedada, a conexão é necessária para carregar a página inicialmente.
+## Privacidade e execução local
 
-## Limites da demonstração
+Os PDFs e as imagens renderizadas são processados **no navegador**. Não há upload de documentos, conta, chave de API, telemetria ou backend. Apenas modelos de nome e suas preferências são salvos em `localStorage`; os PDFs e os campos dos documentos não são persistidos.
 
-**Não há OCR.** PDFs digitalizados como imagem precisam de preenchimento manual. A extração usa regras para rótulos comuns; layouts diferentes podem exigir correção. Revise os dados sugeridos antes de usar os arquivos.
+O OCR carrega o motor WebAssembly e o idioma português do jsDelivr, em versões fixadas. Essas requisições transferem recursos do motor de leitura, **não os documentos**. O primeiro uso pode precisar de internet; não há garantia de funcionamento offline do OCR. PDF.js, JSZip, cliente e worker do Tesseract estão incluídos em `vendor/`.
 
-CNPJ e datas são extraídos como texto, sem validação fiscal. Um PDF com senha pode receber um nome manual, mas sua senha e seu conteúdo permanecem preservados. Os arquivos pendentes constam no relatório e ficam fora do ZIP até serem corrigidos.
+Para desenvolver, baixe ou clone o repositório e sirva a pasta por HTTP:
 
-O lote é mantido na memória do navegador. Lotes muito grandes ou PDFs complexos podem consumir mais memória. Esta versão é uma demonstração funcional de portfólio; não foi homologada para operação fiscal ou grandes volumes.
+```sh
+python -m http.server 8000
+```
 
-## Privacidade e dependências
+Abra `http://localhost:8000`. Também é possível usar hospedagem estática, como o GitHub Pages usado na demonstração. A abertura direta por `file://` não é recomendada para o worker de OCR.
 
-O código processa os PDFs no navegador, sem enviar documentos para uma API ou backend. Apenas preferências de nomes são armazenadas em `localStorage`. Não há análise de uso, OCR externo ou integração com IA nesta versão.
+## Arquitetura e evolução
 
-As versões incluídas são PDF.js **3.11.174** e JSZip **3.10.1**, preservadas da base original. A leitura desativa `isEvalSupported`, conforme a [orientação oficial do PDF.js para CVE-2024-4367](https://github.com/mozilla/pdf.js/security/advisories/GHSA-wgrm-67xf-hhpq), e a página usa uma política de conteúdo sem avaliação dinâmica de scripts. Uma atualização do PDF.js para módulos modernos é uma evolução planejada e exige rever a execução local.
+| Módulo                        | Responsabilidade                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| `pdf-reader.js`               | PDF.js, páginas, texto e posições relativas; acionamento do leitor de imagens |
+| `ocr.js`                      | Worker reutilizável de OCR, idioma e recursos do motor                        |
+| `core.js`                     | Identificação de campos/tipos, evidências, modelos, nomes e colisões          |
+| `archive.js`                  | ZIP, preservação do conteúdo e relatório CSV                                  |
+| `app.js`                      | Fluxo de upload, análise, personalização, revisão e download                  |
+| `index.html` / `style.css`    | Interface responsiva em português                                             |
+| `samples.js` / `examples/`    | Seis documentos inteiramente fictícios                                        |
+| `tests/`                      | Extração, exceções, integridade e lotes                                       |
+| `scripts/generate_samples.py` | Geração reproduzível dos exemplos com ReportLab e Pillow                      |
 
-Veja as licenças das dependências em [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+O leitor entrega um documento estruturado com páginas e método de leitura; o extrator entrega valores, campos dinâmicos, candidatos e fontes; o montador de nomes só consome esses valores. Essa separação permite adicionar um provedor de análise com IA, novos leitores ou um backend sem tornar o preenchimento manual parte do fluxo principal.
 
-## Organização do código
-
-| Arquivo | Responsabilidade |
-| --- | --- |
-| `index.html` e `style.css` | Interface responsiva em português |
-| `app.js` | Interações, preferências e estado do lote |
-| `core.js` | Extração dos campos, nomes, colisões e CSV |
-| `pdf-reader.js` | Leitura local do texto dos PDFs |
-| `archive.js` | Montagem do ZIP e do relatório |
-| `samples.js` e `examples/` | Demonstração com dados fictícios |
-| `tests/` | Testes com PDFs reais de exemplo e arquivos inválidos |
-| `scripts/generate_samples.py` | Geração reproduzível dos exemplos |
+Evoluções previstas: análise generativa com IA e evidências, modelos por tipo documental, histórico, pastas/categorias, armazenamento em nuvem, APIs e integrações empresariais. Esses recursos **não estão implementados** nesta versão.
 
 ## Testes
 
-Com Node.js 20 ou superior:
+Node.js 20 ou superior, sem instalar dependências:
 
 ```sh
 npm test
 ```
 
-Não é necessário executar `npm install`: os testes usam o runner nativo do Node e as bibliotecas incluídas no projeto. A suíte verifica extração em várias páginas, correção manual, ambiguidades, arquivos inválidos, PDFs com senha, colisões, CSV e preservação dos bytes no ZIP.
+A suíte inclui PDFs com texto, colunas e várias páginas, papéis de empresas, dados ambíguos/ausentes, tipos documentais, campos dinâmicos, chaves de acesso, modelos, PDFs inválidos/protegidos, acionamento do adaptador OCR, ZIP/CSV e preservação dos bytes em 100 arquivos. A integração com o motor OCR e a interface hospedada são verificadas separadamente; veja [VALIDACAO.md](docs/VALIDACAO.md).
 
-## Competências demonstradas
+## Dependências
 
-Automação de processos, manipulação de documentos, JavaScript, tratamento de exceções, processamento no navegador, interface para revisão humana e testes de integridade de arquivos.
+PDF.js 3.11.174, JSZip 3.10.1 e Tesseract.js/Core 7.0.0. O PDF.js mantém `isEvalSupported: false`, conforme a [orientação oficial para CVE-2024-4367](https://github.com/mozilla/pdf.js/security/advisories/GHSA-wgrm-67xf-hhpq). A aplicação não usa o viewer nem executa scripts embutidos nos PDFs. A atualização do PDF.js para módulos modernos permanece uma evolução técnica.
 
-O projeto foi preparado com apoio de IA no desenvolvimento e na documentação. Os exemplos são totalmente fictícios e não incluem dados de clientes ou da empresa.
+Licenças e recursos externos: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Projeto preparado com apoio de IA no desenvolvimento. Exemplos fictícios, sem documentos de clientes. Demonstra automação de processos, JavaScript, OCR, extração documental, interface e testes de integridade.

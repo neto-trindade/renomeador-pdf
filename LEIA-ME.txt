@@ -1,29 +1,27 @@
-RENOMEADOR DE PDFs — GUIA RÁPIDO
+RENOMEADOR INTELIGENTE DE PDFs
 
-1. Extraia todo o ZIP para uma pasta.
-2. Abra index.html no Chrome ou Edge. Não precisa instalar nem abrir terminal.
-3. Escolha um dos quatro exemplos de nome. Para escolher outra ordem, clique em
-   “Personalizar formato” e selecione até três partes.
-4. Arraste ou selecione os PDFs.
-5. Confira a lista. Clique em “Corrigir” nos arquivos que pedem revisão.
-6. Clique em “Baixar PDFs prontos”. O ZIP vem com os PDFs e um relatório CSV.
+Abra a plataforma: https://neto-trindade.github.io/renomeador-pdf/
 
-Exemplo: ao escolher “Número - Empresa”, o resultado pode ser
-59349 - EMPRESA XYZ.pdf.
+1. Arraste ou selecione um ou vários PDFs.
+2. Aguarde a análise automática. PDFs digitalizados acionam OCR.
+3. Escolha um modelo pronto ou monte seu próprio nome com campos e textos.
+4. Confira a prévia, se desejar.
+5. Clique em “Renomear arquivos” e depois em “Baixar arquivos”.
 
-Você pode salvar um formato personalizado em “Salvar modelo”. Os modelos ficam
-no navegador deste computador. Se os dados do navegador forem apagados, os
-modelos também serão perdidos.
+O fluxo normal não exige abrir PDFs nem digitar seus dados. Se um campo
+necessário não for encontrado, a plataforma informa a pendência. Use somente
+os dados encontrados, corrija essa exceção, ignore o arquivo ou mude o modelo.
 
-OBSERVAÇÕES
-- A leitura automática procura campos comuns como número da nota, razão social,
-  data de emissão e CNPJ. Confira a prévia: PDFs de empresas diferentes podem
-  organizar os campos de maneiras diferentes.
-- Se houver mais de um valor possível ou nenhum texto pesquisável, corrija o
-  arquivo manualmente. Não há OCR nesta versão.
-- PDF inválido não entra no download. O conteúdo dos PDFs não é alterado.
-- O ZIP traz somente arquivos prontos e um relatório também dos pendentes.
-- Os PDFs são processados no próprio computador, sem envio para um servidor.
+Nomes iguais recebem sufixos. O ZIP preserva o conteúdo dos PDFs e inclui
+um relatório também dos arquivos pendentes e ignorados. Um único documento
+pronto pode ser baixado diretamente. Os originais não são alterados.
 
-Bibliotecas: PDF.js 3.11.174 (Apache 2.0), JSZip 3.10.1 (MIT/GPLv3).
-Licenças na pasta vendor.
+Seus modelos ficam neste navegador; os documentos ficam somente em memória.
+O OCR pode precisar de internet para carregar os recursos de leitura.
+A identificação usa regras e OCR, sem integração com IA generativa nesta versão.
+Documentos pouco legíveis ou layouts incomuns podem exigir revisão.
+
+Para executar uma cópia local, sirva a pasta por HTTP (instruções no README).
+Não é recomendado abrir por file:// por causa do worker de OCR.
+
+Licenças das dependências na pasta vendor e em THIRD_PARTY_NOTICES.md.

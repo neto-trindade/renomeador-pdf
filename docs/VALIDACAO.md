@@ -1,41 +1,37 @@
-# Validação
+# Validação da versão 2
+
+Verificação em 2 de outubro de 2026 (UTC), com documentos inteiramente fictícios.
 
 ## Testes automatizados
 
-Comando: `npm test` (Node.js 24 nesta verificação; projeto compatível com Node.js 20+).
+Comando: `npm test`, Node.js 24. Projeto requer Node.js 20+ e não precisa de instalação de dependências para esses testes.
 
-Resultado: **14 testes aprovados**, sem falhas, em 2 de outubro de 2026 (UTC).
+**31 testes aprovados, sem falhas.**
 
-| Cenário | Resultado verificado |
+| Grupo | Evidência |
 | --- | --- |
-| PDF com texto | Número, empresa, data e CNPJ extraídos |
-| PDF com duas páginas | Dados encontrados na segunda página |
-| Números ambíguos | Pendência até correção manual |
-| PDF somente com imagem | Pendência e correção manual, sem OCR |
-| Campo ausente | Pendência e possibilidade de nome completo |
-| Arquivo falso com extensão PDF | Rejeitado, inclusive após tentativa de nome manual |
-| PDF protegido | Leitura recusada; nome manual permitido sem remover a senha |
-| Nomes repetidos | Sufixos únicos, inclusive com diferença de caixa |
-| Formato personalizado | Prefixo, data, número e separador aplicados |
-| Nome incompatível com Windows | Caracteres proibidos removidos e nome reservado protegido |
-| Número no nome original | Alternativa usada somente sem ambiguidade no texto |
-| ZIP e CSV | Bytes originais idênticos, duplicados separados e pendências registradas |
-| Fórmulas em CSV | Valores potencialmente executáveis tratados como texto |
-| Modelos salvos | Formatos desconhecidos rejeitados |
+| Extração em PDFs reais | Texto nativo, todas as páginas, rótulos e valores em colunas |
+| Contexto documental | CTe principal separado da NF citada; DANFE separado de referência a CTe |
+| Papéis das empresas | Emitente e destinatário, com CNPJs separados |
+| Tipos e campos | NF, CTe, fatura, pedido, CE, emissão, vencimento, valor, cidade/UF e campo novo “Centro de custo” |
+| Dados ausentes/conflitantes | Pendência sem adivinhar; correção ou uso explícito dos encontrados |
+| Chaves e datas | Estrutura e dígito da chave; conflito com número impresso; data impossível descartada; dia de emissão não inferido da chave |
+| Modelos | Cinco composições, textos em qualquer ordem, campos dinâmicos, validação e compatibilidade com modelos anteriores |
+| Exceções | PDF inválido, senha, ignorar e reincluir, ausência de texto nativo |
+| Adaptador OCR | Acionamento em páginas sem texto e continuação da leitura de páginas nativas |
+| Exportação | ZIP/CSV, duplicidade, caracteres de nomes, fórmulas de CSV e bytes idênticos aos originais |
+| Lote de 100 PDFs | Cem arquivos presentes no ZIP, nomes distintos e conteúdo de cada arquivo idêntico à origem |
 
-Os PDFs de teste foram gerados com dados inventados. Não houve medição de ganho de produtividade nem validação de todos os layouts fiscais existentes.
+O teste do adaptador de OCR usa um reconhecedor controlado para verificar o fluxo de páginas. A capacidade do motor real é verificada separadamente, sem substituir esse teste por uma resposta simulada.
 
-## Verificação no navegador
+## OCR real
 
-Verificação em Chrome na página pública do GitHub Pages, em 2 de outubro de 2026 (UTC):
+Integração Tesseract.js 7.0.0 com idioma português fixado em `@tesseract.js-data/por@1.0.0`, sobre a imagem fictícia de `04-apenas-imagem.pdf`. Verificação adicional na página hospedada após a publicação.
 
-- Página carregada com interface, bibliotecas locais e botão de exemplos.
-- Quatro exemplos processados: dois prontos, dois pendentes, sem sobrescrever o nome repetido.
-- Número ambíguo corrigido para `10001` e documento somente com imagem preenchido como `70001 - EMPRESA DEMO LTDA.pdf`.
-- Após revisão, resumo confirmado: quatro arquivos prontos e zero pendências.
-- Comando de exportação acionado; interface confirmou a geração do ZIP sem erro da aplicação.
-- Captura real da demonstração incluída no README.
+## Interface e download
 
-A automação do navegador não conseguiu capturar o arquivo baixado neste ambiente. A integridade do ZIP e do CSV foi verificada pela suíte automatizada, usando o mesmo módulo de exportação da aplicação. Esta checagem não substitui a verificação do download em todos os navegadores.
+A verificação da versão hospedada é registrada após a publicação, usando o mesmo módulo de análise e exportação da aplicação.
 
-Não foi feita uma verificação específica em dispositivos móveis ou na abertura por `file://` nesta rodada.
+## Limites da verificação
+
+Documentos de demonstração, sem validação de todos os layouts fiscais. O lote de 100 usa PDFs pequenos com texto, sem medição de desempenho de 100 documentos digitalizados. Os testes não validam cadastro fiscal de empresas. O OCR depende da legibilidade, da capacidade do dispositivo e do carregamento dos recursos do motor.
