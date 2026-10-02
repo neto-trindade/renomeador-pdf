@@ -6,6 +6,8 @@ Projeto de **[Neto Trindade](https://github.com/neto-trindade)** voltado à auto
 
 **[Abrir a demonstração](https://neto-trindade.github.io/renomeador-pdf/)** · [PDFs fictícios de exemplo](examples) · [Como foi validado](docs/VALIDACAO.md)
 
+![Interface com os quatro PDFs fictícios: dois prontos e dois para revisão](docs/interface.jpg)
+
 ## O problema
 
 Arquivos como `documento_01.pdf` e `anexo.pdf` dificultam a localização de notas e outros documentos. Renomear cada arquivo manualmente exige abrir o PDF, procurar os dados e repetir o processo.

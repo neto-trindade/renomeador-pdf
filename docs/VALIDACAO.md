@@ -27,4 +27,15 @@ Os PDFs de teste foram gerados com dados inventados. Não houve medição de gan
 
 ## Verificação no navegador
 
-A verificação da versão publicada está sendo feita separadamente para confirmar carregamento, exemplos, correção e download. O resultado final dessa verificação será registrado aqui após a publicação.
+Verificação em Chrome na página pública do GitHub Pages, em 2 de outubro de 2026 (UTC):
+
+- Página carregada com interface, bibliotecas locais e botão de exemplos.
+- Quatro exemplos processados: dois prontos, dois pendentes, sem sobrescrever o nome repetido.
+- Número ambíguo corrigido para `10001` e documento somente com imagem preenchido como `70001 - EMPRESA DEMO LTDA.pdf`.
+- Após revisão, resumo confirmado: quatro arquivos prontos e zero pendências.
+- Comando de exportação acionado; interface confirmou a geração do ZIP sem erro da aplicação.
+- Captura real da demonstração incluída no README.
+
+A automação do navegador não conseguiu capturar o arquivo baixado neste ambiente. A integridade do ZIP e do CSV foi verificada pela suíte automatizada, usando o mesmo módulo de exportação da aplicação. Esta checagem não substitui a verificação do download em todos os navegadores.
+
+Não foi feita uma verificação específica em dispositivos móveis ou na abertura por `file://` nesta rodada.
