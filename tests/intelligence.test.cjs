@@ -387,3 +387,71 @@ test("cabeçalho sem evidência de emitente continua sem empresa", () => {
   const d = c.detect("DANFE\nEMPRESA ALFA LTDA\nNumero da NF: 13913");
   assert.equal(d.values.empresa, "");
 });
+
+test("destinatário não mistura endereço do recibo, transportadora nem email", () => {
+  for (const address of ["FZ EXEMPLO, SN ZONA RURAL", "EST DO EXEMPLO, SN BAIRRO FICTICIO", "AV DEMONSTRACAO, SN CENTRO"]) {
+    const d = c.detect(
+      "RECEBEMOS DE EMITENTE FICTICIO LTDA OS PRODUTOS CONSTANTES DA NOTA FISCAL\nDANFE\nDESTINATARIO: CLIENTE FICTICIO LTDA - " + address + "\nDESTINATARIO / REMETENTE\nNOME / RAZAO SOCIAL\nCLIENTE FICTICIO LTDA\nTRANSPORTADOR / VOLUMES TRANSPORTADOS\nNOME / RAZAO SOCIAL\nTRANSPORTADORA FICTICIA LTDA\nDADOS ADICIONAIS\nEmail do Destinatario: cliente@example.invalid\nNumero da NF: 13913",
+    );
+    assert.equal(d.values.empresa, "EMITENTE FICTICIO LTDA");
+    assert.equal(d.values.cliente, "CLIENTE FICTICIO LTDA");
+    assert.equal(d.ambiguous.cliente, false);
+    assert.equal(d.values.transportador, "TRANSPORTADORA FICTICIA LTDA");
+  }
+});
+
+function documentInColumns(rows, dx = 0) {
+  const lines = rows.map(([y, height, cells]) => {
+    let text = "";
+    const segments = cells.map(([x, value]) => {
+      if (text) text += " ";
+      const start = text.length;
+      text += value;
+      return { x: x + dx, text: value, width: value.length * height * 0.45, start, end: text.length };
+    });
+    return { text, y, height, segments };
+  });
+  return { text: lines.map((l) => l.text).join("\n"), pages: [{ lines }] };
+}
+
+test("colunas de CNPJ e data da emissão não são lidas como valores do cabeçalho", () => {
+  for (const dx of [0, 100]) {
+    const d = c.detect(documentInColumns([
+      [220, 10, [[10, "DANFE"]]],
+      [200, 7, [[10, "DESTINATARIO / REMETENTE"]]],
+      [190, 6, [[10, "NOME / RAZAO SOCIAL"], [360, "CNPJ / CPF"], [495, "DATA DA EMISSAO"]]],
+      [177.6, 10, [[10, "CLIENTE FICTICIO LTDA"], [385, "11.111.111/1111-11"], [515, "05/10/2026"]]],
+    ], dx));
+    assert.equal(d.values.cliente, "CLIENTE FICTICIO LTDA");
+    assert.equal(d.values.cnpj_cliente, "11111111111111");
+    assert.equal(d.values.data, "05-10-2026");
+  }
+});
+
+test("nome da transportadora é encontrado mesmo quando o frete vem numa linha anterior", () => {
+  const d = c.detect(documentInColumns([
+    [130, 7, [[10, "TRANSPORTADOR / VOLUMES TRANSPORTADOS"]]],
+    [120, 6, [[10, "NOME / RAZAO SOCIAL"], [176, "FRETE"], [264, "CODIGO ANTT"], [351, "PLACA DO VEICULO"], [439, "UF"], [461, "CNPJ / CPF"]]],
+    [111, 10, [[176, "1-Por conta do Dest"]]],
+    [107.6, 10, [[10, "TRANSPORTADORA FICTICIA LTDA"], [484, "22.222.222/2222-22"]]],
+  ]));
+  assert.equal(d.values.transportador, "TRANSPORTADORA FICTICIA LTDA");
+  assert.equal(d.values.cnpj_transportador, "22222222222222");
+  assert.equal(d.values.cliente || "", "");
+  assert.equal(d.values.empresa, "");
+});
+
+test("dados de contato do destinatário não viram razão social", () => {
+  for (const contact of ["Email do Destinatario: cliente@example.invalid", "Telefone do Cliente: 000000000", "Endereco do Destinatario: FAZENDA EXEMPLO, SN"]) {
+    const d = c.detect(contact);
+    assert.equal(d.values.cliente || "", "");
+    assert.equal(d.values.empresa, "");
+  }
+});
+
+test("cabeçalhos financeiros e de transporte não viram razão social", () => {
+  for (const value of ["FRETE CODIGO ANTT PLACA DO VEICULO", "DATA DA EMISSAO", "FZ EXEMPLO, SN", "cliente@example.invalid"]) {
+    assert.equal(c.detect("Razao Social: " + value).values.empresa, "");
+  }
+  assert.equal(c.detect("Razao Social: EMPRESA FICTICIA LTDA - EPP").values.empresa, "EMPRESA FICTICIA LTDA - EPP");
+});

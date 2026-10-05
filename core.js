@@ -17,10 +17,12 @@
     fornecedor: "Fornecedor",
     remetente: "Remetente",
     tomador: "Tomador",
+    transportador: "Transportadora",
     cnpj: "CNPJ",
     cpf: "CPF",
     cnpj_cliente: "CNPJ do cliente",
     cnpj_fornecedor: "CNPJ do fornecedor",
+    cnpj_transportador: "CNPJ da transportadora",
     data: "Data de emissão",
     vencimento: "Data de vencimento",
     valor: "Valor",
@@ -74,7 +76,7 @@
     ],
     [
       "data",
-      String.raw`data\s*(?:de\s*)?(?:emissao|do\s+documento)|emissao`,
+      String.raw`data\s*(?:(?:de|da)\s*)?(?:emissao|do\s+documento)|emissao`,
       "date",
     ],
     ["vencimento", String.raw`data\s*(?:de\s*)?vencimento|vencimento`, "date"],
@@ -111,6 +113,11 @@
     [
       "tomador",
       String.raw`(?:nome\s+(?:do\s+)?)?tomador(?:\s+do\s+servico)?(?=\s*:|\s*$)`,
+      "company",
+    ],
+    [
+      "transportador",
+      String.raw`(?:nome\s+(?:do\s+|da\s+)?)?transportador(?:a)?(?=\s*:|\s*$)`,
       "company",
     ],
     [
@@ -367,13 +374,15 @@
     if (kind === "state") return s.match(/^([A-Z]{2})\b/)?.[1] || "";
     if (kind === "company") {
       const v = s
+        .replace(/\s+-\s+(?:FZ\b|FAZENDA\b|RUA\b|AV(?:\.|\b)|AVENIDA\b|ROD(?:\.|\b)|RODOVIA\b|EST(?:\.|\b)|ESTRADA\b|TRAVESSA\b|ALAMEDA\b).*$/i, "")
         .replace(/\s+(?:CNPJ|CPF|Endere[cç]o|Inscri[cç][aã]o|DATA)\b.*$/i, "")
         .trim();
       if (
         v.length < 3 ||
         v.length > 160 ||
         !/[\p{L}]/u.test(v) ||
-        /^(?:danfe|dacte|documento auxiliar|recebemos de|rua\b|avenida\b|av\.|rodovia\b|estrada\b|endereco\b|cep\b|cnpj\b|cpf\b|inscricao\b|fone\b|telefone\b|data de\b|natureza da operacao\b|dados dos produtos\b)/.test(fold(v)) ||
+        /@|https?:\/\/|\bwww\./i.test(v) ||
+        /^(?:danfe|dacte|documento auxiliar|recebemos de|rua\b|avenida\b|av\.|rod\b|rodovia\b|estrada\b|fz\b|fazenda\b|endereco\b|cep\b|cnpj\b|cpf\b|inscricao\b|fone\b|telefone\b|data (?:de|da)\b|frete\b|codigo antt\b|placa do veiculo\b|natureza da operacao\b|dados dos produtos\b)/.test(fold(v)) ||
         /^(?:emitente|destinat[aá]rio|remetente|tomador|cliente|fornecedor|identifica[cç][aã]o|nome\s*[/]?\s*raz[aã]o\s+social)$/i.test(
           v,
         )
@@ -423,7 +432,43 @@
     if (/^(?:tomador(?: do servico)?|dados do tomador)$/.test(s))
       return "tomador";
     if (s === "fornecedor") return "fornecedor";
+    if (/^transportador(?:a)?(?: volumes transportados)?$/.test(s)) return "transportador";
     return "";
+  }
+  function columnHeading(text) {
+    const s = String(text || "");
+    if (labels(s).some((hit) => /^[\s:#=-]*$/.test(s.slice(hit.end)))) return true;
+    return /^(?:endereco|bairro(?: distrito)?|cep|frete|codigo antt|placa do veiculo|inscricao (?:estadual|municipal)|hora (?:da|de) saida entrada|data (?:da|de) saida entrada|fone(?: fax)?|quantidade|especie|marca|numeracao|peso (?:bruto|liquido))$/.test(
+      fold(s).replace(/[^a-z\s]/g, " ").trim().replace(/\s+/g, " "),
+    );
+  }
+  function labelledValue(hit, hits, hi, line, lines, li, heading) {
+    const s = line.text || "", cell = line.segments?.find((c) => hit.start >= c.start && hit.start < c.end);
+    const following = cell && line.segments.find((c) => c.start > cell.start && (columnHeading(c.text) || labels(c.text).length));
+    const end = Math.min(hits[hi + 1]?.start ?? s.length, following?.start ?? s.length);
+    let raw = s.slice(hit.end, end), value = clean(hit.def.kind, raw);
+    let source = s.slice(0, 200);
+    if (value || !/^[\s:#=-]*$/.test(raw) || (heading && hit.def.kind !== "company")) return { value, source };
+    // Empty columns can have values on different baselines. Stay inside the column and stop at the next heading.
+    for (let step = 1; step <= 3; step++) {
+      const next = lines[li + step];
+      if (!next) break;
+      if (cell && next.segments?.length) {
+        const height = line.height || 12;
+        if (Math.abs(next.y - line.y) > Math.max(height, next.height || height) * 3.2) break;
+        raw = next.segments.filter((c) => c.x >= cell.x - height && (!following || c.x < following.x - height))
+          .map((c) => c.text).join(" ");
+        if (!raw) continue;
+      } else {
+        if (step > 1) break;
+        raw = next.text || "";
+      }
+      if (labels(raw).length || columnHeading(raw) || roleHeading(raw)) break;
+      value = heading && !/\b(?:LTDA|EIRELI|S[/.]?A|ME|EPP)\b/i.test(raw) ? "" : clean(hit.def.kind, raw);
+      if (value) source += ` → ${raw.slice(0, 180)}`;
+      break;
+    }
+    return { value, source };
   }
   function companyFragments(line) {
     if (!line.segments?.length) return [line.text || ""];
@@ -553,65 +598,23 @@
           heading = roleHeading(s) || (line.segments || []).map((cell) => roleHeading(cell.text)).find(Boolean);
         if (heading) role = heading;
         if (
-          /^(?:dados (?:dos produtos|adicionais)|itens|observacoes|notas fiscais transportadas|documentos originarios)\b/.test(
+          /^(?:dados (?:dos produtos|adicionais)|pagamento|calculo do imposto|itens|observacoes|notas fiscais transportadas|documentos originarios)\b/.test(
             fold(s),
           )
         )
           role = "";
         const hits = labels(s, line.segments);
         hits.forEach((hit, hi) => {
-          let raw = s.slice(hit.end, hits[hi + 1]?.start ?? s.length),
-            source = `Página ${pi + 1}: ${s.slice(0, 200)}`,
-            value = clean(hit.def.kind, raw);
-          if (
-            !value &&
-            /^[\s:#=-]*$/.test(raw) &&
-            (!heading || hit.def.kind === "company")
-          ) {
-            const next = lines[li + 1];
-            if (next) {
-              if (line.segments?.length && next.segments?.length) {
-                const cell =
-                    line.segments.find(
-                      (c) => hit.start >= c.start && hit.start < c.end,
-                    ) || line.segments[0],
-                  following = hits[hi + 1]
-                    ? line.segments.find(
-                        (c) =>
-                          hits[hi + 1].start >= c.start &&
-                          hits[hi + 1].start < c.end,
-                      )
-                    : null,
-                  gap = Math.abs(next.y - line.y),
-                  height = line.height || 12;
-                raw =
-                  gap <= height * 3.2
-                    ? next.segments
-                        .filter(
-                          (c) =>
-                            c.x >= cell.x - height &&
-                            (!following || c.x < following.x - height),
-                        )
-                        .map((c) => c.text)
-                        .join(" ")
-                    : "";
-              } else raw = next.text || "";
-              if (!labels(raw).length) {
-                value =
-                  heading && !/\b(?:LTDA|EIRELI|S[/.]?A|ME|EPP)\b/i.test(raw)
-                    ? ""
-                    : clean(hit.def.kind, raw);
-                source += ` → ${raw.slice(0, 180)}`;
-              }
-            }
-          }
+          if (hit.def.kind === "company" && /(?:e[- ]?mail|telefone|fone|endereco|cnpj|cpf)\s*(?:(?:do|da|de)\s*)?$/.test(fold(s.slice(0, hit.start)))) return;
+          const found = labelledValue(hit, hits, hi, line, lines, li, heading), value = found.value;
+          const source = `Página ${pi + 1}: ${found.source}`;
           let key = hit.def.key,
             score = 2;
           if (key === "empresa" && role) {
             key = role;
             score = 4;
           }
-          if (key === "cnpj" && ["cliente", "fornecedor"].includes(role))
+          if (key === "cnpj" && ["cliente", "fornecedor", "transportador"].includes(role))
             key = "cnpj_" + role;
           if (
             [
@@ -620,6 +623,7 @@
               "fornecedor",
               "remetente",
               "tomador",
+              "transportador",
             ].includes(key)
           )
             score = 4;

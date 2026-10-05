@@ -1,6 +1,6 @@
 {
   "name": "renomeador-pdf",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "description": "Analise automatica de PDFs com texto e OCR, modelos dinamicos de nome e exportacao em lote",
   "scripts": {

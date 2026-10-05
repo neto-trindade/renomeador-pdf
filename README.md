@@ -25,6 +25,7 @@ Exemplo: o documento fictício em colunas tem CTe `346386`, emitente `TRANSPORTA
 - Reconstrução de linhas e colunas a partir de posições **relativas**, sem coordenadas fixas por empresa.
 - Identificação por títulos, rótulos, contexto de emitente/destinatário e chaves de acesso com dígito verificador.
 - Razão social do emitente em cabeçalhos de DANFE/DACTE sem rótulo, quando há evidência no bloco do CNPJ, e no recibo “Recebemos de ... os produtos”. O destinatário permanece separado; nomes conflitantes exigem revisão.
+- Separa a razão social do endereço anexado ao recibo e dos campos de transportadora, frete e contato. Em colunas, lê CNPJ e data da emissão sob seus próprios cabeçalhos.
 - Números de NF, CTe, CE, fatura, pedido e documento; empresa, emitente, fornecedor, cliente, CNPJ/CPF, emissão, vencimento, valor, cidade/UF, descrição e código interno, quando encontrados.
 - Novos campos no formato `Rótulo: valor` aparecem automaticamente na personalização, como **Centro de custo**.
 - Cinco modelos prontos: número; número + empresa; empresa + número; número + data; empresa + número + data.
@@ -88,6 +89,8 @@ npm test
 ```
 
 A suíte inclui PDFs com texto, colunas e várias páginas, papéis de empresas, dados ambíguos/ausentes, tipos documentais, campos dinâmicos, chaves de acesso, modelos, PDFs inválidos/protegidos, acionamento do adaptador OCR, ZIP/CSV e preservação dos bytes em 100 arquivos. A integração com o motor OCR e a interface hospedada são verificadas separadamente; veja [VALIDACAO.md](docs/VALIDACAO.md).
+
+Em 5 de outubro de 2026, os **45 testes** passaram. A versão também foi confrontada com **oito PDFs privados e seus XMLs**, fornecidos pelo usuário: número, emitente, destinatário e respectivos CNPJs coincidiram, sem correções manuais. Os documentos privados não fazem parte do repositório.
 
 ## Dependências
 

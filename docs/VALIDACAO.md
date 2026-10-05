@@ -1,18 +1,18 @@
-# Validação da versão 2
+# Validação da versão 2.0.2
 
-Verificação inicial em 2 de outubro de 2026 (UTC); suíte reexecutada e extração da razão social ampliada em 5 de outubro de 2026. Documentos de teste inteiramente fictícios.
+Verificação inicial em 2 de outubro de 2026 (UTC); suíte reexecutada e extração da razão social ampliada em 5 de outubro de 2026. Os exemplos e testes publicados são inteiramente fictícios. A verificação complementar com documentos privados está descrita abaixo.
 
 ## Testes automatizados
 
 Comando: `npm test`, Node.js 24. Projeto requer Node.js 20+ e não precisa de instalação de dependências para esses testes.
 
-**40 testes aprovados, sem falhas**, na execução de 5 de outubro de 2026.
+**45 testes aprovados, sem falhas**, na execução de 5 de outubro de 2026.
 
 | Grupo | Evidência |
 | --- | --- |
-| Extração em PDFs reais | Texto nativo, todas as páginas, rótulos e valores em colunas |
+| Extração em arquivos PDF | Texto nativo, todas as páginas, rótulos e valores em colunas |
 | Contexto documental | CTe principal separado da NF citada; DANFE separado de referência a CTe |
-| Papéis das empresas | Emitente e destinatário, CNPJs separados e empresa sob o cabeçalho do emitente |
+| Papéis das empresas | Emitente, destinatário e transportadora separados, com os respectivos CNPJs; empresa sob o cabeçalho do emitente |
 | Tipos e campos | Abreviações de número com pontuação, NF, CTe, fatura, pedido, CE, emissão, vencimento, valor, cidade/UF e campo novo “Centro de custo” |
 | Dados ausentes/conflitantes | Pendência sem adivinhar; correção ou uso explícito dos encontrados |
 | Chaves e datas | Estrutura e dígito da chave; conflito com número impresso; data impossível descartada; dia de emissão não inferido da chave |
@@ -30,7 +30,19 @@ A ausência do nome foi reproduzida em um DANFE fictício com razão social no c
 
 Há testes adicionais para nome no recibo “Recebemos de ... os produtos”, razão social explicitamente rotulada, dois nomes conflitantes e cabeçalhos sem evidência suficiente. Endereço e destinatário não preenchem o nome do emitente. Dois candidatos distintos continuam pendentes.
 
-A correção usa evidências do conteúdo, sem consulta externa de CNPJ. O relato veio por captura de tela, sem PDF original: a reprodução fictícia verifica a falha de cabeçalho, mas não comprova o resultado daquele layout específico.
+A leitura também separa a razão social do destinatário de endereços anexados ao resumo do recibo, do nome da transportadora e de contatos no rodapé. A leitura sob cabeçalhos usa os limites relativos das colunas e evita interpretar frete, placa ou data da emissão como parte de um nome empresarial. A correção usa evidências do conteúdo, sem consulta externa de CNPJ.
+
+## Conferência de oito documentos privados — 5 de outubro de 2026
+
+O usuário forneceu oito PDFs com texto nativo e seus oito XMLs de NF-e. A extração foi executada apenas sobre os PDFs; os XMLs serviram como referência independente para conferir os resultados, sem preencher campos do leitor.
+
+- Nos oito documentos, número, emitente, destinatário, CNPJ do emitente e CNPJ do destinatário coincidiram com os XMLs.
+- O campo **Empresa** correspondeu ao emitente nos oito casos.
+- Os modelos **Número + Empresa** e **Número + Cliente** ficaram prontos nos oito casos, sem correções manuais.
+- O módulo real de exportação gerou o lote com oito PDFs renomeados e relatório CSV. Após reabrir o ZIP, os bytes dos PDFs foram comparados aos originais e eram idênticos.
+- Os PDFs, XMLs, campos identificadores e capturas desses documentos privados não foram incluídos no repositório público. Os testes de regressão usam dados fictícios.
+
+Essa conferência cobre o lote enviado e não constitui validação de todos os layouts fiscais. A verificação do navegador descrita a seguir foi realizada na publicação anterior, em 2 de outubro.
 
 ## OCR real
 
@@ -58,4 +70,4 @@ A captura da interface no README mostra a página real, com os resultados da an�
 
 ## Limites da verificação
 
-Documentos de demonstração, sem validação de todos os layouts fiscais. O lote de 100 usa PDFs pequenos com texto, sem medição de desempenho de 100 documentos digitalizados. Os testes não validam cadastro fiscal de empresas. O OCR depende da legibilidade, da capacidade do dispositivo e do carregamento dos recursos do motor.
+Documentos de demonstração e um lote privado de oito PDFs, sem validação de todos os layouts fiscais. O lote de 100 usa PDFs pequenos com texto, sem medição de desempenho de 100 documentos digitalizados. Os testes não validam cadastro fiscal de empresas. O OCR depende da legibilidade, da capacidade do dispositivo e do carregamento dos recursos do motor.
