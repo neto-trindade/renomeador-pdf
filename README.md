@@ -10,7 +10,7 @@ Uma plataforma de automação documental de **[Neto Trindade](https://github.com
 
 ## Experimente
 
-1. Arraste seus PDFs ou clique em **Selecionar PDFs**. Para testar sem documentos pessoais, use **Experimentar com 6 exemplos fictícios**.
+1. Arraste seus PDFs ou clique em **Selecionar PDFs**. Para testar sem documentos pessoais, use **Experimentar com 7 exemplos fictícios**.
 2. A leitura de todas as páginas começa automaticamente. Em páginas digitalizadas, o OCR é acionado sem configuração.
 3. Escolha um dos cinco modelos de nome ou clique em **Personalizar nome**.
 4. Confira a prévia. Revisar dados é opcional, exceto quando um campo necessário estiver ausente ou ambíguo.
@@ -24,6 +24,7 @@ Exemplo: o documento fictício em colunas tem CTe `346386`, emitente `TRANSPORTA
 - Extração do texto nativo e OCR local em português com Tesseract.js.
 - Reconstrução de linhas e colunas a partir de posições **relativas**, sem coordenadas fixas por empresa.
 - Identificação por títulos, rótulos, contexto de emitente/destinatário e chaves de acesso com dígito verificador.
+- Razão social do emitente em cabeçalhos de DANFE/DACTE sem rótulo, quando há evidência no bloco do CNPJ, e no recibo “Recebemos de ... os produtos”. O destinatário permanece separado; nomes conflitantes exigem revisão.
 - Números de NF, CTe, CE, fatura, pedido e documento; empresa, emitente, fornecedor, cliente, CNPJ/CPF, emissão, vencimento, valor, cidade/UF, descrição e código interno, quando encontrados.
 - Novos campos no formato `Rótulo: valor` aparecem automaticamente na personalização, como **Centro de custo**.
 - Cinco modelos prontos: número; número + empresa; empresa + número; número + data; empresa + número + data.
@@ -37,7 +38,7 @@ Exemplo: o documento fictício em colunas tem CTe `346386`, emitente `TRANSPORTA
 
 ## Identificação automática, com limites claros
 
-Esta versão usa **extração por regras e OCR**, sem uma API generativa de IA. Ela encontra rótulos comuns e relações entre linhas/colunas, mas não compreende qualquer documento arbitrário. Campos sem rótulo, documentos pouco legíveis, empresas em seções não reconhecidas e layouts incomuns podem exigir revisão. Conflitos entre valores ficam pendentes; a aplicação não escolhe um valor arbitrariamente.
+Esta versão usa **extração por regras e OCR**, sem uma API generativa de IA. Ela encontra rótulos comuns e relações entre linhas/colunas, mas não compreende qualquer documento arbitrário. A leitura de razão social sem rótulo no cabeçalho exige um nome empresarial reconhecível e evidência de CNPJ no mesmo bloco fiscal; não consulta cadastros para deduzir a empresa. Campos sem evidência suficiente, documentos pouco legíveis, nomes empresariais sem terminação reconhecível fora de rótulos/recibos e layouts incomuns podem exigir revisão. Conflitos entre valores ficam pendentes; a aplicação não escolhe um valor arbitrariamente.
 
 A detecção do tipo é uma sugestão contextual. CNPJ/CPF são extraídos pelo formato, sem validação cadastral ou fiscal. Datas inválidas são descartadas. Uma chave de acesso só é interpretada após validação estrutural e do dígito verificador; ela não fornece o dia de emissão. Números alfanuméricos de documento ainda podem não ser reconhecidos.
 
@@ -69,9 +70,10 @@ Abra `http://localhost:8000`. Também é possível usar hospedagem estática, co
 | `archive.js`                  | ZIP, preservação do conteúdo e relatório CSV                                  |
 | `app.js`                      | Fluxo de upload, análise, personalização, revisão e download                  |
 | `index.html` / `style.css`    | Interface responsiva em português                                             |
-| `samples.js` / `examples/`    | Seis documentos inteiramente fictícios                                        |
+| `samples.js` / `examples/`    | Sete documentos inteiramente fictícios                                        |
 | `tests/`                      | Extração, exceções, integridade e lotes                                       |
 | `scripts/generate_samples.py` | Geração reproduzível dos exemplos com ReportLab e Pillow                      |
+| `scripts/generate_danfe_fixture.py` | DANFE fictício com razão social sem rótulo no cabeçalho                    |
 
 O leitor entrega um documento estruturado com páginas e método de leitura; o extrator entrega valores, campos dinâmicos, candidatos e fontes; o montador de nomes só consome esses valores. Essa separação permite adicionar um provedor de análise com IA, novos leitores ou um backend sem tornar o preenchimento manual parte do fluxo principal.
 

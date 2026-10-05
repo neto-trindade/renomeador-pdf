@@ -8,6 +8,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.colors import HexColor
 from reportlab.lib.utils import ImageReader
 from reportlab.lib.pagesizes import A4
+from generate_danfe_fixture import generate as generate_danfe
 
 ROOT = Path(__file__).resolve().parents[1]
 WIDTH, HEIGHT = A4
@@ -87,10 +88,11 @@ table_pdf(examples/'05-cte-em-colunas.pdf','DACTE - Conhecimento de Transporte',
     [(44,'UF','BA'),(315,'Codigo interno','LOG-2026')],
 ])
 text_pdf(examples/'06-fatura-ficticia.pdf',[('Numero da Fatura: 00090001','FATURA FICTICIA - SEM VALOR FISCAL'),('Fornecedor: SERVICOS BETA LTDA','Cliente: CLIENTE DEMO LTDA'),('Data de Emissao: 01/10/2026','Data de Vencimento: 15/10/2026'),('Valor total: R$ 1.250,00','Centro de custo: FIN-02'),('Cidade: Salvador','UF: BA')])
+generate_danfe(examples/'07-danfe-cabecalho.pdf')
 text_pdf(fixtures/'sem-empresa.pdf', [('Numero da NF: 00081001','Empresa ausente de proposito')])
 text_pdf(fixtures/'varias-paginas.pdf', normal, pages=2)
 text_pdf(fixtures/'protegido.pdf', normal, password='senha-de-teste')
 (fixtures/'invalido.pdf').write_text('Este arquivo nao e um PDF. Fixture ficticia para validacao.\n')
 embedded=[{'name':f.name,'base64':base64.b64encode(f.read_bytes()).decode()} for f in sorted(examples.glob('*.pdf'))]
 (ROOT/'samples.js').write_text('// Fictional sample PDFs embedded for an offline one-click demo.\nconst RenomeadorSamples = '+json.dumps(embedded,ensure_ascii=False,separators=(',',':'))+';\n')
-print('9 PDFs ficticios, 1 arquivo invalido e 6 exemplos incorporados gerados.')
+print('10 PDFs ficticios, 1 arquivo invalido e 7 exemplos incorporados gerados.')

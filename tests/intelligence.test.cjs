@@ -194,15 +194,22 @@ test("lote de 100 PDFs preserva todos os bytes e resolve todas as colisões", as
   const bytes = await fs.readFile(
     path.join(__dirname, "../examples/01-nota-ficticia.pdf"),
   );
-  const entries = Array.from({ length: 100 }, (_, i) => ({
-    ...make("Número da NF: 346386\nRazão Social: ALFA LTDA"),
-    file: { name: "scan" + i + ".pdf", arrayBuffer: async () => bytes },
-  }));
+  const entries = [];
+  for (let i = 0; i < 100; i++) {
+    const document = await reader.readPdfDocument(bytes, pdfjs);
+    entries.push({
+      loaded: true,
+      overrides: {},
+      manualName: "",
+      detected: c.detect(document, "scan" + i + ".pdf"),
+      file: { name: "scan" + i + ".pdf", arrayBuffer: async () => bytes },
+    });
+  }
   const results = c.uniqueResults(
     entries.map((e) => c.evaluateEntry(e, model)),
   );
   entries.forEach((e, i) => (e.result = results[i]));
-  assert.equal(results[99].name, "346386 - ALFA LTDA (100).pdf");
+  assert.equal(results[99].name, "59349 - EMPRESA DEMO LTDA (100).pdf");
   const zip = await JSZip.loadAsync(await createArchive(entries, JSZip));
   assert.equal(
     Object.keys(zip.files).filter((n) => n.endsWith(".pdf")).length,
@@ -276,4 +283,107 @@ test("leitor aciona OCR nas páginas de imagem e continua lendo páginas nativas
   assert.equal(c.detect(d).values.numero, "70001");
   assert.equal(c.detect(d).values.empresa, "EMPRESA DEMO LTDA");
   assert.equal(destroyed, true);
+});
+
+test("falha de idioma do OCR encerra a tentativa e não se repete em todo o lote", async () => {
+  const vm = require("node:vm"),
+    source = await fs.readFile(path.join(__dirname, "../ocr.js"), "utf8");
+  let attempts = 0;
+  const context = {
+    setTimeout,
+    clearTimeout,
+    Tesseract: {
+      createWorker: (_lang, _oem, options) => {
+        attempts++;
+        queueMicrotask(() => options.errorHandler("LANGUAGE_UNAVAILABLE"));
+        return new Promise(() => {});
+      },
+    },
+  };
+  vm.runInNewContext(source, context);
+  await assert.rejects(
+    context.RenomeadorOcr.recognizeImage({}),
+    /LANGUAGE_UNAVAILABLE/,
+  );
+  await assert.rejects(
+    context.RenomeadorOcr.recognizeImage({}),
+    /LANGUAGE_UNAVAILABLE/,
+  );
+  assert.equal(attempts, 1);
+  context.RenomeadorOcr.resetIfFailed();
+  await assert.rejects(
+    context.RenomeadorOcr.recognizeImage({}),
+    /LANGUAGE_UNAVAILABLE/,
+  );
+  assert.equal(attempts, 2);
+});
+
+test("empresa sob o cabeçalho emitente é encontrada sem uma posição fixa", () => {
+  const d = c.detect(
+    "DANFE\nIDENTIFICAÇÃO DO EMITENTE\nTRANSPORTADORA ALFA LTDA\nCNPJ: 00.000.000/0000-00\nNúmero da NF: 12345",
+  );
+  assert.equal(d.values.emitente, "TRANSPORTADORA ALFA LTDA");
+  assert.equal(d.values.empresa, "TRANSPORTADORA ALFA LTDA");
+  const missing = c.detect(
+    "DANFE\nEMITENTE\nRua das Flores, 100\nNúmero da NF: 12345",
+  );
+  assert.equal(missing.values.empresa, "");
+});
+test("abreviações de número com pontuação são identificadas", () => {
+  for (const label of ["NF-e Nº.", "N.º da NF:", "Número da NF:"]) {
+    assert.equal(c.detect(label + " 00012345").values.numero, "12345");
+  }
+});
+
+test("DANFE real fictício encontra razão social sem rótulo no cabeçalho", async () => {
+  const bytes = await fs.readFile(
+    path.join(__dirname, "../examples/07-danfe-cabecalho.pdf"),
+  );
+  const d = c.detect(await reader.readPdfDocument(bytes, pdfjs));
+  assert.equal(d.type, "NF");
+  assert.equal(d.values.numero, "13913");
+  assert.equal(d.values.empresa, "COMERCIO DEMONSTRACAO LTDA");
+  assert.equal(d.values.emitente, "COMERCIO DEMONSTRACAO LTDA");
+  assert.equal(d.values.cliente, "CLIENTE FICTICIO LTDA");
+  assert.equal(d.values.cnpj, "00000000000000");
+  assert.equal(d.values.cnpj_cliente, "11111111111111");
+  assert.equal(d.values.data, "05-10-2026");
+  assert.equal(c.compose(d.values, model), "13913 - COMERCIO DEMONSTRACAO LTDA");
+});
+
+test("nome do emitente em recibo de DANFE é separado da frase fiscal", () => {
+  const d = c.detect(
+    "RECEBEMOS DE COMERCIO ALFA S.A. OS PRODUTOS E/OU SERVICOS CONSTANTES DA NOTA FISCAL\nDANFE\nNumero da NF: 13913\nDESTINATARIO / REMETENTE\nNome / Razao Social: CLIENTE BETA LTDA",
+  );
+  assert.equal(d.values.empresa, "COMERCIO ALFA S.A.");
+  assert.equal(d.values.cliente, "CLIENTE BETA LTDA");
+});
+
+test("cabeçalho fiscal sem razão social não usa endereço nem destinatário", () => {
+  const d = c.detect(
+    "DANFE\nRua das Flores, 100\nSalvador - BA\nCNPJ: 00.000.000/0000-00\nDESTINATARIO / REMETENTE\nNome / Razao Social: CLIENTE BETA LTDA\nCNPJ: 11.111.111/1111-11\nNumero da NF: 13913",
+  );
+  assert.equal(d.values.empresa, "");
+  assert.equal(d.values.cliente, "CLIENTE BETA LTDA");
+});
+
+test("dois nomes de emitente no cabeçalho permanecem ambíguos", () => {
+  const d = c.detect(
+    "DANFE\nEMPRESA ALFA LTDA\nEMPRESA BETA LTDA\nCNPJ: 00.000.000/0000-00\nNumero da NF: 13913",
+  );
+  assert.equal(d.values.empresa, "");
+  assert.equal(d.ambiguous.empresa, true);
+});
+
+test("razão social explícita do emitente tem prioridade sobre o cabeçalho", () => {
+  const d = c.detect(
+    "DANFE\nMARCA COMERCIAL LTDA\nCNPJ: 00.000.000/0000-00\nRazao Social do Emitente: EMPRESA LEGAL LTDA\nDESTINATARIO / REMETENTE\nNome / Razao Social: CLIENTE BETA LTDA\nNumero da NF: 13913",
+  );
+  assert.equal(d.values.empresa, "EMPRESA LEGAL LTDA");
+  assert.equal(d.values.cliente, "CLIENTE BETA LTDA");
+});
+
+test("cabeçalho sem evidência de emitente continua sem empresa", () => {
+  const d = c.detect("DANFE\nEMPRESA ALFA LTDA\nNumero da NF: 13913");
+  assert.equal(d.values.empresa, "");
 });

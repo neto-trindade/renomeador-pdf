@@ -44,32 +44,32 @@
   const DEFINITIONS = [
     [
       "numero_nf",
-      String.raw`(?:numero|n[º°o.]?)\s*(?:(?:da|de)\s*)?(?:nf-?e?|nota\s+fiscal)|(?:nf-?e?|nota\s+fiscal(?:\s+eletronica)?)\s*(?:n[º°o.]?|numero)?`,
+      String.raw`(?:numero|n(?:[.]?[º°o]|[.])?[.]?)\s*(?:(?:da|de)\s*)?(?:nf-?e?|nota\s+fiscal)|(?:nf-?e?|nota\s+fiscal(?:\s+eletronica)?)\s*(?:n(?:[.]?[º°o]|[.])?[.]?|numero)?`,
       "number",
     ],
     [
       "numero_cte",
-      String.raw`(?:numero|n[º°o.]?)\s*(?:(?:do|de)\s*)?ct-?e(?:-?os)?|ct-?e(?:-?os)?\s*(?:n[º°o.]?|numero)?`,
+      String.raw`(?:numero|n(?:[.]?[º°o]|[.])?[.]?)\s*(?:(?:do|de)\s*)?ct-?e(?:-?os)?|ct-?e(?:-?os)?\s*(?:n(?:[.]?[º°o]|[.])?[.]?|numero)?`,
       "number",
     ],
     [
       "numero_ce",
-      String.raw`(?:numero|n[º°o.]?)\s*(?:(?:da|do|de)\s*)?ce|ce\s*(?:n[º°o.]?|numero)`,
+      String.raw`(?:numero|n(?:[.]?[º°o]|[.])?[.]?)\s*(?:(?:da|do|de)\s*)?ce|ce\s*(?:n(?:[.]?[º°o]|[.])?[.]?|numero)`,
       "number",
     ],
     [
       "numero_fatura",
-      String.raw`(?:numero|n[º°o.]?)\s*(?:(?:da|de)\s*)?fatura|fatura\s*(?:n[º°o.]?|numero)?`,
+      String.raw`(?:numero|n(?:[.]?[º°o]|[.])?[.]?)\s*(?:(?:da|de)\s*)?fatura|fatura\s*(?:n(?:[.]?[º°o]|[.])?[.]?|numero)?`,
       "number",
     ],
     [
       "numero_pedido",
-      String.raw`(?:numero|n[º°o.]?)\s*(?:(?:do|de)\s*)?pedido|pedido\s*(?:n[º°o.]?|numero)?`,
+      String.raw`(?:numero|n(?:[.]?[º°o]|[.])?[.]?)\s*(?:(?:do|de)\s*)?pedido|pedido\s*(?:n(?:[.]?[º°o]|[.])?[.]?|numero)?`,
       "number",
     ],
     [
       "numero",
-      String.raw`numero\s*(?:(?:do|de)\s*)?(?:documento|duplicata|recibo)|documento\s*(?:n[º°o.]?|numero)|n[º°]\s*(?:documento)?|numero`,
+      String.raw`numero\s*(?:(?:do|de)\s*)?(?:documento|duplicata|recibo)|documento\s*(?:n(?:[.]?[º°o]|[.])?[.]?|numero)|n[º°]\s*(?:documento)?|numero`,
       "number",
     ],
     [
@@ -90,7 +90,7 @@
     ],
     [
       "emitente",
-      String.raw`(?:nome\s*(?:[/]\s*razao\s+social)?\s*(?:do\s*)?)?emitente(?=\s*:|\s*$)`,
+      String.raw`(?:(?:nome(?:\s*[/]\s*razao\s+social)?|razao\s+social)\s*(?:do\s*)?)?emitente(?=\s*:|\s*$)`,
       "company",
     ],
     [
@@ -373,6 +373,7 @@
         v.length < 3 ||
         v.length > 160 ||
         !/[\p{L}]/u.test(v) ||
+        /^(?:danfe|dacte|documento auxiliar|recebemos de|rua\b|avenida\b|av\.|rodovia\b|estrada\b|endereco\b|cep\b|cnpj\b|cpf\b|inscricao\b|fone\b|telefone\b|data de\b|natureza da operacao\b|dados dos produtos\b)/.test(fold(v)) ||
         /^(?:emitente|destinat[aá]rio|remetente|tomador|cliente|fornecedor|identifica[cç][aã]o|nome\s*[/]?\s*raz[aã]o\s+social)$/i.test(
           v,
         )
@@ -415,14 +416,80 @@
       .replace(/[^a-z\s]/g, " ")
       .trim()
       .replace(/\s+/g, " ");
-    if (/^(?:identificacao (?:do )?)?emitente$/.test(s)) return "emitente";
-    if (/^(?:destinatario(?: remetente)?|cliente|dados do cliente)$/.test(s))
+    if (/^(?:(?:identificacao|dados) (?:do )?)?emitente$/.test(s)) return "emitente";
+    if (/^(?:(?:identificacao|dados) (?:do )?)?(?:destinatario(?: remetente)?|cliente)$/.test(s))
       return "cliente";
     if (s === "remetente") return "remetente";
     if (/^(?:tomador(?: do servico)?|dados do tomador)$/.test(s))
       return "tomador";
     if (s === "fornecedor") return "fornecedor";
     return "";
+  }
+  function companyFragments(line) {
+    if (!line.segments?.length) return [line.text || ""];
+    const groups = [], height = line.height || 12;
+    for (const cell of line.segments) {
+      const previous = groups.at(-1);
+      if (previous && cell.x - previous.right <= height * 1.6) {
+        previous.text += " " + cell.text;
+        previous.right = cell.x + (cell.width || 0);
+      } else groups.push({ text: cell.text, right: cell.x + (cell.width || 0) });
+    }
+    return groups.map((group) => group.text);
+  }
+  function headerCompany(raw) {
+    // A DANFE/DACTE title may share the row with the company name in another column.
+    const value = clean("company", String(raw)
+      .replace(/\s+(?:DANFE|DACTE|Documento\s+Auxiliar)\b.*$/i, "")
+      .trim());
+    if (!value || labels(value).length) return "";
+    return /(?:^|\s)(?:LTDA\.?|LIMITADA|EIRELI|EPP|MEI?|S\s*[./]\s*A\.?|SA)\s*$/i.test(value)
+      ? value : "";
+  }
+  function issuerFromHeader(pages, text, filename, out, add) {
+    if (!["NF", "CTe"].includes(inferType(text, out.values))) return;
+    const accessKeys = (out.candidates.chave || []).map((c) => parseAccessKey(c.value));
+    const filenameKey = parseAccessKey(filename.replace(/\.pdf$/i, "").replace(/^(?:NFE|CTE)[ _.-]*/i, ""));
+    if (filenameKey) accessKeys.push(filenameKey);
+    const issuerIds = new Set(accessKeys.filter(Boolean).map((key) => key.cnpj));
+    // Conflicting keys do not establish a reliable issuer identity for an unlabelled name.
+    if (issuerIds.size > 1) return;
+    for (let pi = 0; pi < pages.length; pi++) {
+      const lines = pages[pi].lines || [];
+      let end = lines.length;
+      for (let li = 0; li < lines.length; li++) {
+        const s = lines[li].text || "";
+        const headings = [s, ...(lines[li].segments || []).map((cell) => cell.text)].map(roleHeading);
+        if (headings.some((role) => ["cliente", "remetente", "tomador", "fornecedor"].includes(role)) ||
+            /^(?:destinatario|remetente|tomador|cliente|fornecedor)\s*:/.test(fold(s)) ||
+            /^(?:dados dos produtos|calculo do imposto|transportador|informacoes complementares|dados adicionais)\b/.test(fold(s))) {
+          end = li;
+          break;
+        }
+      }
+      const anchors = [];
+      for (let li = 0; li < end; li++) {
+        const line = lines[li], s = line.text || "";
+        const receipt = s.match(/\bRECEBEMOS\s+DE\s+(.+?)\s+(?:OS|AS)\s+(?:PRODUTOS|MERCADORIAS|SERVI[CÇ]OS)\b/i);
+        if (receipt) add("emitente", clean("company", receipt[1]), `Página ${pi + 1}: ${s.slice(0, 200)}`, 3);
+        if (!/\bcnpj\b/i.test(s)) continue;
+        let raw = s;
+        if (!/\d{14}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/.test(raw)) raw = lines[li + 1]?.text || "";
+        const ids = [...raw.matchAll(/(?:^|[^\d])(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{14})(?!\d)/g)]
+          .map((hit) => hit[1].replace(/\D/g, ""));
+        if (ids.some((id) => !issuerIds.size || issuerIds.has(id))) anchors.push(li);
+      }
+      const anchor = anchors[0];
+      if (anchor === undefined) continue;
+      // Names in an issuer header precede its CNPJ. Recipient/product sections are excluded.
+      for (let li = Math.max(0, anchor - 14); li <= anchor; li++) {
+        for (const fragment of companyFragments(lines[li])) {
+          const value = headerCompany(fragment);
+          if (value) add("emitente", value,
+            `Página ${pi + 1}: cabeçalho “${fragment.slice(0, 160)}”, associado ao CNPJ do emitente`, 3);
+        }
+      }
+    }
   }
   function inferType(text, values) {
     const s = fold(text),
@@ -483,7 +550,7 @@
       for (let li = 0; li < lines.length; li++) {
         const line = lines[li],
           s = line.text || "",
-          heading = roleHeading(s);
+          heading = roleHeading(s) || (line.segments || []).map((cell) => roleHeading(cell.text)).find(Boolean);
         if (heading) role = heading;
         if (
           /^(?:dados (?:dos produtos|adicionais)|itens|observacoes|notas fiscais transportadas|documentos originarios)\b/.test(
@@ -496,7 +563,11 @@
           let raw = s.slice(hit.end, hits[hi + 1]?.start ?? s.length),
             source = `Página ${pi + 1}: ${s.slice(0, 200)}`,
             value = clean(hit.def.kind, raw);
-          if (!value && /^[\s:#=-]*$/.test(raw) && !heading) {
+          if (
+            !value &&
+            /^[\s:#=-]*$/.test(raw) &&
+            (!heading || hit.def.kind === "company")
+          ) {
             const next = lines[li + 1];
             if (next) {
               if (line.segments?.length && next.segments?.length) {
@@ -526,7 +597,10 @@
                     : "";
               } else raw = next.text || "";
               if (!labels(raw).length) {
-                value = clean(hit.def.kind, raw);
+                value =
+                  heading && !/\b(?:LTDA|EIRELI|S[/.]?A|ME|EPP)\b/i.test(raw)
+                    ? ""
+                    : clean(hit.def.kind, raw);
                 source += ` → ${raw.slice(0, 180)}`;
               }
             }
@@ -574,6 +648,7 @@
         }
       }
     }
+    issuerFromHeader(pages, text, filename, out, add);
     function settle(key) {
       const list = out.candidates[key] || [];
       if (!list.length) return;

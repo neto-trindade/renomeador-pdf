@@ -285,7 +285,9 @@ function renderRows() {
     target.textContent = r.name || "—";
     const reason = document.createElement("span");
     reason.className = "reason";
-    reason.textContent = r.reason || e.reading?.warnings?.[0] || "";
+    reason.textContent = [r.reason, e.reading?.warnings?.[0]]
+      .filter(Boolean)
+      .join(" ");
     if (reason.textContent) target.append(reason);
     const pill = document.createElement("span");
     pill.className = "pill " + r.status;
@@ -350,6 +352,7 @@ function progress(percent, text) {
 async function analyze(batch) {
   if (reading || packing) return;
   reading = true;
+  RenomeadorOcr.resetIfFailed();
   tell("");
   recalculate();
   for (let i = 0; i < batch.length; i++) {
