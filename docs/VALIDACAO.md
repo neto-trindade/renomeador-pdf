@@ -42,7 +42,7 @@ O usuário forneceu oito PDFs com texto nativo e seus oito XMLs de NF-e. A extra
 - O módulo real de exportação gerou o lote com oito PDFs renomeados e relatório CSV. Após reabrir o ZIP, os bytes dos PDFs foram comparados aos originais e eram idênticos.
 - Os PDFs, XMLs, campos identificadores e capturas desses documentos privados não foram incluídos no repositório público. Os testes de regressão usam dados fictícios.
 
-Essa conferência cobre o lote enviado e não constitui validação de todos os layouts fiscais. A verificação do navegador descrita a seguir foi realizada na publicação anterior, em 2 de outubro.
+Essa conferência cobre o lote enviado e não constitui validação de todos os layouts fiscais. As verificações no navegador estão datadas na seção de interface abaixo.
 
 ## OCR real
 
@@ -51,6 +51,8 @@ Motor real Tesseract.js 7.0.0 com idioma português fixado em `@tesseract.js-dat
 Na página pública, o mesmo PDF sem camada de texto ficou pronto como `70001 - EMPRESA DEMO LTDA.pdf`, com indicador **OCR**, sem abrir revisão nem preencher seus campos.
 
 ## Interface e download
+
+Em 5 de outubro, após a implantação da versão 2.0.2, os oito PDFs privados foram selecionados no Chrome da página pública. A análise automática mostrou **8 documentos · 8 prontos** no modelo **Número + Empresa**, com os nomes esperados. A interface preparou o lote e exibiu **Baixar arquivos**. A captura desse resultado foi entregue apenas ao usuário, sem publicação dos dados no repositório.
 
 Verificação inicial em 2 de outubro, no Chrome da página publicada em GitHub Pages:
 
@@ -64,7 +66,7 @@ Verificação inicial em 2 de outubro, no Chrome da página publicada em GitHub 
 - ZIP preparado com cinco PDFs prontos e relatório; link persistente **Baixar arquivos** exibido.
 - Um único documento gerou link **Baixar PDF** com o nome correto; mudar o padrão invalidou o download anterior.
 
-**Limitação do ambiente:** a automação deste navegador não conseguiu capturar o arquivo baixado após clicar no link, também na tentativa pelo leitor de downloads. Portanto, a conclusão do download no navegador não foi verificada. A geração e a integridade dos arquivos ZIP/CSV foram verificadas no módulo real de exportação pela suíte automatizada. Não foi utilizada uma saída simulada para afirmar que houve download.
+**Limitação do ambiente:** a automação deste navegador não conseguiu capturar o arquivo baixado após clicar no link, também na tentativa pelo leitor de downloads. A nova tentativa em 5 de outubro encerrou com tempo limite ao esperar o evento de download. Portanto, a conclusão do download no navegador não foi verificada. A geração e a integridade dos arquivos ZIP/CSV foram verificadas no módulo real de exportação pela suíte automatizada e pela conferência dos oito PDFs privados. Não foi utilizada uma saída simulada para afirmar que houve download.
 
 A captura da interface no README mostra a página real, com os resultados da análise.
 
